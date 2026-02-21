@@ -1,0 +1,190 @@
+"use client";
+
+import { useWallet } from "@solana/wallet-adapter-react";
+import { useWalletModal } from "@solana/wallet-adapter-react-ui";
+import {
+  Box,
+  Button,
+  Card,
+  CardContent,
+  Chip,
+  Divider,
+  Grid,
+  MenuItem,
+  Stack,
+  TextField,
+  Typography
+} from "@mui/material";
+import { useEffect, useMemo, useState } from "react";
+import { IdentityActions } from "@/components/wallet/identity-actions";
+import { HoldingsPanel } from "@/components/wallet/holdings-panel";
+import { useRpcEndpoint } from "@/components/providers/solana-wallet-provider";
+import { useWalletHoldings } from "@/hooks/use-wallet-holdings";
+
+function shortenAddress(address: string) {
+  return `${address.slice(0, 6)}...${address.slice(-6)}`;
+}
+
+export function WalletSection() {
+  const { connected, publicKey, disconnect, wallet } = useWallet();
+  const { setVisible } = useWalletModal();
+  const { endpoint, defaultEndpoint, options, setEndpoint, resetEndpoint } =
+    useRpcEndpoint();
+  const holdingsState = useWalletHoldings();
+
+  const [selectedRpc, setSelectedRpc] = useState(endpoint);
+  const [customRpc, setCustomRpc] = useState(endpoint);
+
+  const walletLabel = publicKey ? shortenAddress(publicKey.toBase58()) : "Connect Identity";
+  const isUsingPresetRpc = useMemo(
+    () => options.some((option) => option.value === endpoint),
+    [endpoint, options]
+  );
+  const canApplyCustomRpc =
+    customRpc.trim().length > 0 && customRpc.trim() !== endpoint;
+
+  useEffect(() => {
+    const preset = options.find((option) => option.value === endpoint);
+    setSelectedRpc(preset ? preset.value : "custom");
+    setCustomRpc(endpoint);
+  }, [endpoint, options]);
+
+  return (
+    <Card
+      id="identity"
+      className="fx-enter fx-pulse"
+      sx={{
+        borderRadius: 2.5,
+        border: "1px solid",
+        borderColor: "divider",
+        background: "linear-gradient(180deg, rgba(19, 27, 33, 0.96), rgba(14, 20, 24, 0.96))"
+      }}
+    >
+      <CardContent sx={{ p: { xs: 2, md: 2.5 } }}>
+        <Grid container spacing={1.5}>
+          <Grid item xs={12} lg={7}>
+            <Stack spacing={1.8}>
+              <Box>
+                <Typography variant="overline" color="primary.light">
+                  Identity
+                </Typography>
+                <Typography variant="h2" sx={{ fontSize: { xs: "1.55rem", md: "1.95rem" }, mt: 0.4 }}>
+                  Wallet Console
+                </Typography>
+                <Typography color="text.secondary" mt={0.8}>
+                  Transaction tools for SOL and SPL operations, plus RPC routing
+                  and account lifecycle controls.
+                </Typography>
+              </Box>
+
+              <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ sm: "center" }}>
+                <Button
+                  variant="contained"
+                  onClick={() => setVisible(true)}
+                  sx={{ width: { xs: "100%", sm: "auto" }, minWidth: 170 }}
+                >
+                  {walletLabel}
+                </Button>
+                {connected ? (
+                  <Button
+                    variant="outlined"
+                    color="inherit"
+                    onClick={() => {
+                      void disconnect();
+                    }}
+                    sx={{ width: { xs: "100%", sm: "auto" } }}
+                  >
+                    Disconnect
+                  </Button>
+                ) : null}
+                {wallet?.adapter.name ? (
+                  <Chip
+                    variant="outlined"
+                    label={wallet.adapter.name}
+                    sx={{ borderColor: "rgba(190, 214, 205, 0.2)" }}
+                  />
+                ) : null}
+              </Stack>
+
+              <Divider />
+
+              <Stack spacing={1}>
+                <Typography variant="subtitle2" color="text.secondary">
+                  RPC Provider
+                </Typography>
+                <Stack direction={{ xs: "column", md: "row" }} spacing={1}>
+                  <TextField
+                    select
+                    size="small"
+                    label="Provider"
+                    value={selectedRpc}
+                    onChange={(event) => {
+                      const nextValue = event.target.value;
+                      setSelectedRpc(nextValue);
+                      if (nextValue !== "custom") {
+                        setEndpoint(nextValue);
+                      }
+                    }}
+                    sx={{ minWidth: { xs: "100%", md: 240 } }}
+                  >
+                    {options.map((option) => (
+                      <MenuItem key={option.value} value={option.value}>
+                        {option.label}
+                      </MenuItem>
+                    ))}
+                    <MenuItem value="custom">Custom RPC URL</MenuItem>
+                  </TextField>
+                  <TextField
+                    size="small"
+                    label="Custom RPC URL"
+                    value={customRpc}
+                    onChange={(event) => {
+                      setCustomRpc(event.target.value);
+                    }}
+                    disabled={selectedRpc !== "custom"}
+                    fullWidth
+                  />
+                  <Button
+                    variant="outlined"
+                    onClick={() => {
+                      setEndpoint(customRpc);
+                    }}
+                    disabled={selectedRpc !== "custom" || !canApplyCustomRpc}
+                  >
+                    Apply
+                  </Button>
+                  <Button
+                    variant="text"
+                    onClick={resetEndpoint}
+                    disabled={endpoint === defaultEndpoint}
+                    sx={{ whiteSpace: "nowrap" }}
+                  >
+                    Reset
+                  </Button>
+                </Stack>
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{
+                    display: "block",
+                    wordBreak: "break-all",
+                    fontFamily: "var(--font-mono), monospace"
+                  }}
+                >
+                  Active RPC: {endpoint}
+                  {isUsingPresetRpc ? "" : " (custom)"}
+                </Typography>
+              </Stack>
+
+              <IdentityActions holdingsState={holdingsState} />
+            </Stack>
+          </Grid>
+
+          <Grid item xs={12} lg={5}>
+            <HoldingsPanel holdingsState={holdingsState} />
+          </Grid>
+        </Grid>
+      </CardContent>
+    </Card>
+  );
+}
