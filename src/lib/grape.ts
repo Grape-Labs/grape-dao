@@ -20,7 +20,7 @@ export const grapeProducts: GrapeProduct[] = [
       "On-chain reputation spaces for communities and contributor identity.",
     programId: "V1NE6WCWJPRiVFq5DtaN8p87M9DmmUd2zQuVbvLgQwX",
     href: "https://vine.governance.so",
-    ctaLabel: "Open VINE",
+    ctaLabel: "Open OG Reputation Space",
     logo: ogAvatar
   },
   {
@@ -29,7 +29,7 @@ export const grapeProducts: GrapeProduct[] = [
       "Verification primitives for membership, access checks, and reputation-aware flows.",
     programId: "VrFyyRxPoyWxpABpBXU4YUCCF9p8giDSJUv2oXfDr5q",
     href: "https://verification.governance.so/",
-    ctaLabel: "Open Verification",
+    ctaLabel: "Open Grape Verification",
     logo: verificationAvatar
   },
   {
@@ -38,7 +38,7 @@ export const grapeProducts: GrapeProduct[] = [
       "Token and credential-gated access tooling for communities and products.",
     programId: "GPASSzQQF1H8cdj5pUwFkeYEE4VdMQtCrYtUaMXvPz48",
     href: "https://access.governance.so/",
-    ctaLabel: "Open Access",
+    ctaLabel: "Open Grape Access",
     logo: grapeAvatar
   },
   {
