@@ -275,10 +275,9 @@ export default function Home() {
                     the speed and composability of Solana.
                   </Typography>
                   <Typography color="text.secondary">
-                    Grape brings identity, reputation, verification, access
-                    control, directory tooling, and governance into one system so
-                    communities can move from discovery to decision-making
-                    without leaving the stack.
+                    Grape is infrastructure for internet communities: verify
+                    members, enforce access, map reputation, and execute DAO
+                    decisions in one integrated stack.
                   </Typography>
                   <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
                     <Chip label="Solana Mainnet" variant="outlined" color="secondary" />
