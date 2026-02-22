@@ -34,6 +34,7 @@ import { Buffer } from "buffer";
 import {
   Alert,
   Button,
+  CircularProgress,
   Card,
   CardContent,
   Chip,
@@ -51,6 +52,19 @@ type TokenAuthorityManagerProps = {
 type DistributionRecipient = {
   owner: PublicKey;
   amountBaseUnits: bigint;
+};
+
+type TokenMetadataTemplate = {
+  name: string;
+  symbol: string;
+  description: string;
+  image: string;
+  external_url: string;
+  attributes: Array<{ trait_type: string; value: string }>;
+  properties: {
+    category: string;
+    files: Array<{ uri: string; type: string }>;
+  };
 };
 
 type StatusState = {
@@ -126,6 +140,24 @@ function shortenAddress(address: string) {
   return `${address.slice(0, 6)}...${address.slice(-6)}`;
 }
 
+function buildTokenMetadataTemplate(
+  name: string,
+  symbol: string
+): TokenMetadataTemplate {
+  return {
+    name,
+    symbol,
+    description: "Token metadata for Grape ecosystem.",
+    image: "",
+    external_url: "https://grape.art",
+    attributes: [],
+    properties: {
+      category: "image",
+      files: [{ uri: "", type: "image/png" }]
+    }
+  };
+}
+
 function findMetadataPda(mint: PublicKey) {
   return PublicKey.findProgramAddressSync(
     [METADATA_SEED, TOKEN_METADATA_PROGRAM_ID.toBytes(), mint.toBytes()],
@@ -175,6 +207,11 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
   const [metadataNewUpdateAuthority, setMetadataNewUpdateAuthority] = useState("");
   const [metadataUriOnlyMint, setMetadataUriOnlyMint] = useState("");
   const [metadataUriOnlyValue, setMetadataUriOnlyValue] = useState("");
+  const [isUploadingMetadata, setIsUploadingMetadata] = useState(false);
+  const [uploadedMetadataUrl, setUploadedMetadataUrl] = useState("");
+  const [metadataJsonDraft, setMetadataJsonDraft] = useState(() =>
+    JSON.stringify(buildTokenMetadataTemplate("", ""), null, 2)
+  );
 
   const activeTokenProgramPublicKey = useMemo(
     () => new PublicKey(tokenProgramId),
@@ -705,6 +742,88 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
     }
   };
 
+  const uploadMetadataContent = async (file: File) => {
+    setIsUploadingMetadata(true);
+    setStatus(null);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("contentType", file.type || "application/json");
+
+      const response = await fetch("/api/storage/upload?provider=irys", {
+        method: "POST",
+        body: formData
+      });
+
+      const payload = (await response.json()) as {
+        ok?: boolean;
+        error?: string;
+        url?: string;
+      };
+
+      if (!response.ok || !payload.ok || !payload.url) {
+        throw new Error(payload.error || "Irys upload failed.");
+      }
+
+      setUploadedMetadataUrl(payload.url);
+      setMetadataUri(payload.url);
+      setMetadataUriOnlyValue(payload.url);
+      setStatus({
+        severity: "success",
+        message: "Metadata uploaded to Irys and URI fields updated."
+      });
+    } catch (unknownError) {
+      setStatus({
+        severity: "error",
+        message:
+          unknownError instanceof Error
+            ? unknownError.message
+            : "Failed to upload metadata to Irys."
+      });
+    } finally {
+      setIsUploadingMetadata(false);
+    }
+  };
+
+  const uploadMetadataToIrys = async (file: File | null) => {
+    if (!file) {
+      setStatus({ severity: "error", message: "Select a metadata file first." });
+      return;
+    }
+    await uploadMetadataContent(file);
+  };
+
+  const uploadMetadataDraftToIrys = async () => {
+    try {
+      const parsed = JSON.parse(metadataJsonDraft) as TokenMetadataTemplate;
+      const normalized = JSON.stringify(parsed, null, 2);
+      const draftFile = new File([normalized], "token-metadata.json", {
+        type: "application/json"
+      });
+      await uploadMetadataContent(draftFile);
+    } catch (unknownError) {
+      setStatus({
+        severity: "error",
+        message:
+          unknownError instanceof Error
+            ? `Invalid metadata JSON: ${unknownError.message}`
+            : "Invalid metadata JSON."
+      });
+    }
+  };
+
+  const prefillMetadataJsonDraft = () => {
+    const template = buildTokenMetadataTemplate(
+      metadataName.trim(),
+      metadataSymbol.trim()
+    );
+    setMetadataJsonDraft(JSON.stringify(template, null, 2));
+    setStatus({
+      severity: "info",
+      message: "Metadata JSON template pre-filled from current token fields."
+    });
+  };
+
   return (
     <Card variant="outlined" sx={{ borderRadius: 1.75 }}>
       <CardContent sx={{ p: 1.75 }}>
@@ -782,6 +901,80 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
           {!connected || !publicKey ? (
             <Alert severity="info">Connect your wallet to use token authority actions.</Alert>
           ) : null}
+
+          <Card variant="outlined" sx={{ borderRadius: 1.5 }}>
+            <CardContent sx={{ p: 1.2 }}>
+              <Stack spacing={1}>
+                <Typography variant="subtitle2">Upload Token Metadata (Irys)</Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Write metadata JSON using a pre-filled template or upload a file directly.
+                </Typography>
+                <TextField
+                  multiline
+                  minRows={8}
+                  size="small"
+                  label="Metadata JSON"
+                  value={metadataJsonDraft}
+                  onChange={(event) => {
+                    setMetadataJsonDraft(event.target.value);
+                  }}
+                  placeholder={`{\n  "name": "My Token",\n  "symbol": "MYT"\n}`}
+                />
+                <Stack direction={{ xs: "column", md: "row" }} spacing={1}>
+                  <Button
+                    variant="outlined"
+                    onClick={prefillMetadataJsonDraft}
+                    disabled={isUploadingMetadata}
+                  >
+                    Prefill Template
+                  </Button>
+                  <Button
+                    variant="contained"
+                    onClick={() => {
+                      void uploadMetadataDraftToIrys();
+                    }}
+                    disabled={isUploadingMetadata}
+                  >
+                    Upload Draft JSON
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    component="label"
+                    disabled={isUploadingMetadata}
+                  >
+                    Upload JSON File
+                    <input
+                      hidden
+                      type="file"
+                      accept="application/json,.json"
+                      onChange={(event) => {
+                        const selectedFile = event.target.files?.[0] ?? null;
+                        void uploadMetadataToIrys(selectedFile);
+                        event.currentTarget.value = "";
+                      }}
+                    />
+                  </Button>
+                  {isUploadingMetadata ? (
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <CircularProgress size={16} />
+                      <Typography variant="caption" color="text.secondary">
+                        Uploading to Irys...
+                      </Typography>
+                    </Stack>
+                  ) : null}
+                </Stack>
+                {uploadedMetadataUrl ? (
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    sx={{ wordBreak: "break-all", fontFamily: "var(--font-mono), monospace" }}
+                  >
+                    Uploaded URI: {uploadedMetadataUrl}
+                  </Typography>
+                ) : null}
+              </Stack>
+            </CardContent>
+          </Card>
 
           <Card variant="outlined" sx={{ borderRadius: 1.5 }}>
             <CardContent sx={{ p: 1.2 }}>

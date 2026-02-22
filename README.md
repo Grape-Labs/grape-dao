@@ -57,6 +57,8 @@ Route: `/token` (`/tokentools` redirects to `/token`)
 - Mint supply to destination owner ATA
 - Batch mint and distribute to many wallets from recipient list input
 - Update mint/freeze authority
+- Write metadata JSON in-app with a pre-filled token template
+- Upload metadata JSON to Irys mainnet and auto-fill URI
 - Create metadata account
 - Update metadata authority
 - Update metadata URI only
@@ -144,3 +146,17 @@ npm run build
   - `NEXT_PUBLIC_SOLANA_DEFAULT_RPC_URL`
     - Overrides default RPC endpoint at build/runtime
 - RPC selection is also persisted in browser local storage.
+
+### Irys Upload (Token Metadata)
+
+- `IRYS_SOLANA_PRIVATE_KEY` (required, server-only JSON array keypair)
+- `IRYS_NETWORK` (optional, default: `mainnet`)
+- `IRYS_GATEWAY_URL` (optional, default: `https://gateway.irys.xyz`)
+- `IRYS_RPC_URL` (optional override)
+- `IRYS_MAX_UPLOAD_BYTES` (optional, default: `10485760`)
+- `IRYS_OP_TIMEOUT_MS` (optional, default: `8000`)
+- `IRYS_UPLOAD_TIMEOUT_MS` (optional, default: `25000`)
+- `IRYS_AUTO_FUND` (optional, default: `false`)
+- fallback RPC envs used when `IRYS_RPC_URL` is not set:
+  - `NEXT_PUBLIC_RPC_SHYFT_MAINNET` or `NEXT_PUBLIC_SOLANA_DEFAULT_RPC_URL` for mainnet
+  - `NEXT_PUBLIC_RPC_SHYFT_DEVNET` for devnet
