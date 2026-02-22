@@ -174,21 +174,26 @@ export function MuiThemeProvider({ children }: MuiThemeProviderProps) {
           },
           ".fx-bars": {
             display: "flex",
-            gap: "6px",
-            alignItems: "flex-end"
+            gap: "4px",
+            alignItems: "flex-end",
+            height: "22px"
           },
           ".fx-bars span": {
-            width: "6px",
-            borderRadius: "2px",
+            width: "5px",
+            height: "22px",
+            borderRadius: "3px",
             background:
               "linear-gradient(180deg, rgba(109, 180, 255, 0.95), rgba(95, 211, 162, 0.75))",
-            animation: "fxBar 1.8s ease-in-out infinite"
+            transformOrigin: "center bottom",
+            animation: "fxEqualizer 1.2s ease-in-out infinite"
           },
-          ".fx-bars span:nth-of-type(1)": { height: "14px", animationDelay: "0ms" },
-          ".fx-bars span:nth-of-type(2)": { height: "24px", animationDelay: "120ms" },
-          ".fx-bars span:nth-of-type(3)": { height: "18px", animationDelay: "240ms" },
-          ".fx-bars span:nth-of-type(4)": { height: "28px", animationDelay: "360ms" },
-          ".fx-bars span:nth-of-type(5)": { height: "16px", animationDelay: "480ms" },
+          ".fx-bars span:nth-of-type(1)": { animationDelay: "0ms" },
+          ".fx-bars span:nth-of-type(2)": { animationDelay: "80ms" },
+          ".fx-bars span:nth-of-type(3)": { animationDelay: "160ms" },
+          ".fx-bars span:nth-of-type(4)": { animationDelay: "240ms" },
+          ".fx-bars span:nth-of-type(5)": { animationDelay: "320ms" },
+          ".fx-bars span:nth-of-type(6)": { animationDelay: "400ms" },
+          ".fx-bars span:nth-of-type(7)": { animationDelay: "480ms" },
           ".fx-pulse": {
             animation: "fxPulse 3.4s ease-in-out infinite"
           },
@@ -224,18 +229,30 @@ export function MuiThemeProvider({ children }: MuiThemeProviderProps) {
               transform: "translateX(120%)"
             }
           },
-          "@keyframes fxBar": {
+          "@keyframes fxEqualizer": {
             "0%": {
-              transform: "scaleY(0.6)",
-              opacity: 0.5
+              transform: "scaleY(0.26)",
+              opacity: 0.48
             },
-            "50%": {
-              transform: "scaleY(1.2)",
+            "20%": {
+              transform: "scaleY(0.9)",
+              opacity: 0.92
+            },
+            "40%": {
+              transform: "scaleY(0.42)",
+              opacity: 0.62
+            },
+            "60%": {
+              transform: "scaleY(1)",
               opacity: 1
             },
+            "80%": {
+              transform: "scaleY(0.52)",
+              opacity: 0.7
+            },
             "100%": {
-              transform: "scaleY(0.6)",
-              opacity: 0.5
+              transform: "scaleY(0.26)",
+              opacity: 0.48
             }
           },
           "@keyframes adminBgShift": {

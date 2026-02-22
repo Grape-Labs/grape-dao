@@ -130,6 +130,8 @@ export function LiveSignalsPanel() {
               <span />
               <span />
               <span />
+              <span />
+              <span />
             </Box>
           </Stack>
 
@@ -191,4 +193,3 @@ export function LiveSignalsPanel() {
     </Card>
   );
 }
-
