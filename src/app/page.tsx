@@ -22,6 +22,24 @@ export default function Home() {
     "linear-gradient(160deg, rgba(77, 64, 118, 0.68), rgba(15, 24, 34, 0.92))",
     "linear-gradient(160deg, rgba(38, 85, 112, 0.68), rgba(11, 23, 31, 0.92))"
   ];
+  const grapeFlow = [
+    {
+      title: "Identity",
+      detail: "Wallet console for holdings, transfers, simulation, approvals, and recovery."
+    },
+    {
+      title: "Verification + Access",
+      detail: "Use credentials and token gates to control membership and permissions."
+    },
+    {
+      title: "Reputation + Directory",
+      detail: "Attach social context and list communities with DAO-controlled directory logic."
+    },
+    {
+      title: "Governance",
+      detail: "Route everything into SPL Governance participation and operations."
+    }
+  ];
 
   return (
     <Container maxWidth="xl" sx={{ py: { xs: 3, md: 6 } }}>
@@ -231,6 +249,85 @@ export default function Home() {
             </Grid>
           ))}
         </Grid>
+      </Box>
+
+      <Box mt={5}>
+        <Card
+          className="fx-enter fx-shell"
+          sx={{
+            borderRadius: 2.5,
+            background:
+              "linear-gradient(160deg, rgba(12, 22, 31, 0.94), rgba(8, 14, 20, 0.96))"
+          }}
+        >
+          <CardContent sx={{ p: { xs: 2.5, md: 3 } }}>
+            <Grid container spacing={2.3}>
+              <Grid item xs={12} lg={6}>
+                <Stack spacing={1.3}>
+                  <Typography variant="overline" color="primary.light">
+                    Why Grape
+                  </Typography>
+                  <Typography variant="h2" sx={{ fontSize: { xs: "1.45rem", md: "1.95rem" } }}>
+                    Decentralized Social Networking Infrastructure
+                  </Typography>
+                  <Typography color="text.secondary">
+                    Create, reward, and secure online communities by harnessing
+                    the speed and composability of Solana.
+                  </Typography>
+                  <Typography color="text.secondary">
+                    Grape brings identity, reputation, verification, access
+                    control, directory tooling, and governance into one system so
+                    communities can move from discovery to decision-making
+                    without leaving the stack.
+                  </Typography>
+                  <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+                    <Chip label="Solana Mainnet" variant="outlined" color="secondary" />
+                    <Chip label="DAO-native Primitives" variant="outlined" color="secondary" />
+                    <Chip label="Composable by Design" variant="outlined" color="secondary" />
+                  </Stack>
+                </Stack>
+              </Grid>
+              <Grid item xs={12} lg={6}>
+                <Stack spacing={1.2}>
+                  <Typography variant="overline" color="primary.light">
+                    How It Connects
+                  </Typography>
+                  {grapeFlow.map((step, index) => (
+                    <Card
+                      key={step.title}
+                      sx={{
+                        borderRadius: 1.8,
+                        background:
+                          "linear-gradient(145deg, rgba(18, 30, 40, 0.92), rgba(12, 21, 28, 0.92))",
+                        border: "1px solid",
+                        borderColor: "divider"
+                      }}
+                    >
+                      <CardContent sx={{ p: 1.35, "&:last-child": { pb: 1.35 } }}>
+                        <Stack direction="row" spacing={1.2} alignItems="flex-start">
+                          <Chip
+                            size="small"
+                            variant="outlined"
+                            label={`0${index + 1}`}
+                            sx={{ fontFamily: "var(--font-mono), monospace" }}
+                          />
+                          <Box>
+                            <Typography variant="subtitle2" sx={{ lineHeight: 1.2 }}>
+                              {step.title}
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary">
+                              {step.detail}
+                            </Typography>
+                          </Box>
+                        </Stack>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </Stack>
+              </Grid>
+            </Grid>
+          </CardContent>
+        </Card>
       </Box>
 
       <Box mt={5}>
