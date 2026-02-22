@@ -58,6 +58,7 @@ Route: `/token` (`/tokentools` redirects to `/token`)
 - Batch mint and distribute to many wallets from recipient list input
 - Update mint/freeze authority
 - Write metadata JSON in-app with a pre-filled token template
+- Set token image URI directly or upload token image file to Irys and auto-write image fields
 - Upload metadata JSON to Irys mainnet and auto-fill URI
 - Create metadata account
 - Update metadata authority

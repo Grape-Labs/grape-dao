@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import type { MessageSignerWalletAdapter } from "@solana/wallet-adapter-base";
 import {
@@ -68,6 +68,16 @@ type TokenMetadataTemplate = {
   };
 };
 
+type AuthorityMint = {
+  mint: string;
+  programId: string;
+  hasMintAuthority: boolean;
+  hasFreezeAuthority: boolean;
+  decimals: number;
+  supplyLabel: string;
+  isInitialized: boolean;
+};
+
 type StatusState = {
   severity: "success" | "error" | "info";
   message: string;
@@ -101,6 +111,38 @@ function parseAmountToBaseUnits(input: string, decimals: number): bigint {
   return BigInt(combined);
 }
 
+function readU32LE(data: Uint8Array, offset: number) {
+  if (offset + 4 > data.length) {
+    return 0;
+  }
+  return (
+    data[offset] |
+    (data[offset + 1] << 8) |
+    (data[offset + 2] << 16) |
+    (data[offset + 3] << 24)
+  ) >>> 0;
+}
+
+function readU64LE(data: Uint8Array, offset: number) {
+  let result = 0n;
+  for (let index = 0; index < 8; index += 1) {
+    const byte = data[offset + index] ?? 0;
+    result |= BigInt(byte) << (8n * BigInt(index));
+  }
+  return result;
+}
+
+function formatRawUnits(raw: bigint, decimals: number) {
+  if (decimals <= 0) {
+    return raw.toString();
+  }
+  const normalized = raw.toString();
+  const padded = normalized.padStart(decimals + 1, "0");
+  const whole = padded.slice(0, -decimals).replace(/^0+/, "") || "0";
+  const fraction = padded.slice(-decimals).replace(/0+$/, "");
+  return fraction ? `${whole}.${fraction}` : whole;
+}
+
 function parseAtomicAmount(value: unknown): bigint {
   if (typeof value === "bigint") {
     return value;
@@ -127,6 +169,10 @@ function parseAtomicAmount(value: unknown): bigint {
 
 function normalizeBaseUrl(value: string) {
   return value.replace(/\/+$/, "");
+}
+
+function explorerAddressUrl(address: string) {
+  return `https://explorer.solana.com/address/${address}?cluster=mainnet`;
 }
 
 function parseDistributionRecipients(
@@ -171,18 +217,19 @@ function shortenAddress(address: string) {
 
 function buildTokenMetadataTemplate(
   name: string,
-  symbol: string
+  symbol: string,
+  imageUri = ""
 ): TokenMetadataTemplate {
   return {
     name,
     symbol,
     description: "Token metadata for Grape ecosystem.",
-    image: "",
+    image: imageUri,
     external_url: "https://grape.art",
     attributes: [],
     properties: {
       category: "image",
-      files: [{ uri: "", type: "image/png" }]
+      files: [{ uri: imageUri, type: "image/png" }]
     }
   };
 }
@@ -213,6 +260,14 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
   >("self");
   const [customFreezeAuthority, setCustomFreezeAuthority] = useState("");
   const [createdMint, setCreatedMint] = useState("");
+  const [createdMints, setCreatedMints] = useState<string[]>([]);
+  const [authorityMints, setAuthorityMints] = useState<AuthorityMint[]>([]);
+  const [authorityMintsLoading, setAuthorityMintsLoading] = useState(false);
+  const [authorityMintsError, setAuthorityMintsError] = useState<string | null>(null);
+  const [authorityMintsLoaded, setAuthorityMintsLoaded] = useState(false);
+  const [authorityScanScope, setAuthorityScanScope] = useState<"active" | "all">(
+    "active"
+  );
 
   const [mintAddress, setMintAddress] = useState("");
   const [mintDestinationOwner, setMintDestinationOwner] = useState("");
@@ -238,6 +293,8 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
   const [metadataUriOnlyValue, setMetadataUriOnlyValue] = useState("");
   const [isUploadingMetadata, setIsUploadingMetadata] = useState(false);
   const [uploadedMetadataUrl, setUploadedMetadataUrl] = useState("");
+  const [tokenImageUri, setTokenImageUri] = useState("");
+  const [uploadedImageUrl, setUploadedImageUrl] = useState("");
   const [metadataJsonDraft, setMetadataJsonDraft] = useState(() =>
     JSON.stringify(buildTokenMetadataTemplate("", ""), null, 2)
   );
@@ -246,6 +303,131 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
     () => new PublicKey(tokenProgramId),
     [tokenProgramId]
   );
+  const selectedTokenProgramPreset = useMemo(() => {
+    const normalizedInput = tokenProgramInput.trim();
+    const matchedPreset = TOKEN_PROGRAM_OPTIONS.find(
+      (option) => option.value === normalizedInput
+    );
+    return matchedPreset ? matchedPreset.value : "custom";
+  }, [tokenProgramInput]);
+
+  const loadAuthorityMints = useCallback(async () => {
+    if (!publicKey) {
+      setAuthorityMints([]);
+      setAuthorityMintsError(null);
+      setAuthorityMintsLoading(false);
+      return;
+    }
+
+    setAuthorityMintsLoading(true);
+    setAuthorityMintsError(null);
+    try {
+      const walletAddress = publicKey.toBase58();
+      const programIds =
+        authorityScanScope === "all"
+          ? [TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID]
+          : [activeTokenProgramPublicKey];
+      const queryPlan = programIds.flatMap((programId) => [
+        { programId, offset: 4 },
+        { programId, offset: 50 }
+      ]);
+
+      const queryResults: Awaited<
+        ReturnType<typeof connection.getProgramAccounts>
+      >[] = [];
+      for (const query of queryPlan) {
+        const accounts = await connection.getProgramAccounts(query.programId, {
+          filters: [
+            { dataSize: MINT_SIZE },
+            { memcmp: { offset: query.offset, bytes: walletAddress } }
+          ],
+          dataSlice: { offset: 0, length: MINT_SIZE }
+        });
+        queryResults.push(accounts);
+      }
+
+      const byMint = new Map<
+        string,
+        { mint: string; programId: string; data: Uint8Array }
+      >();
+      queryResults.forEach((accounts, queryIndex) => {
+        const query = queryPlan[queryIndex];
+        accounts.forEach((account) => {
+          const mintAddress = account.pubkey.toBase58();
+          const key = `${query.programId.toBase58()}:${mintAddress}`;
+          if (!byMint.has(key)) {
+            byMint.set(key, {
+              mint: mintAddress,
+              programId: query.programId.toBase58(),
+              data: account.account.data
+            });
+          }
+        });
+      });
+
+      const parsed = Array.from(byMint.values())
+        .map((entry) => {
+          if (entry.data.length < 82) {
+            return null;
+          }
+
+          const mintAuthorityOption = readU32LE(entry.data, 0);
+          const mintAuthority =
+            mintAuthorityOption === 1
+              ? new PublicKey(entry.data.slice(4, 36)).toBase58()
+              : null;
+
+          const freezeAuthorityOption = readU32LE(entry.data, 46);
+          const freezeAuthority =
+            freezeAuthorityOption === 1
+              ? new PublicKey(entry.data.slice(50, 82)).toBase58()
+              : null;
+
+          const hasMintAuthority = mintAuthority === walletAddress;
+          const hasFreezeAuthority = freezeAuthority === walletAddress;
+          if (!hasMintAuthority && !hasFreezeAuthority) {
+            return null;
+          }
+
+          const decimals = entry.data[44] ?? 0;
+          const isInitialized = (entry.data[45] ?? 0) === 1;
+          const supplyRaw = readU64LE(entry.data, 36);
+
+          return {
+            mint: entry.mint,
+            programId: entry.programId,
+            hasMintAuthority,
+            hasFreezeAuthority,
+            decimals,
+            supplyLabel: formatRawUnits(supplyRaw, decimals),
+            isInitialized
+          } satisfies AuthorityMint;
+        })
+        .filter((entry): entry is AuthorityMint => Boolean(entry))
+        .sort((left, right) => {
+          if (left.hasMintAuthority !== right.hasMintAuthority) {
+            return left.hasMintAuthority ? -1 : 1;
+          }
+          if (left.hasFreezeAuthority !== right.hasFreezeAuthority) {
+            return left.hasFreezeAuthority ? -1 : 1;
+          }
+          return left.mint.localeCompare(right.mint);
+        });
+
+      setAuthorityMints(parsed);
+      setAuthorityMintsLoaded(true);
+    } catch (unknownError) {
+      setAuthorityMints([]);
+      setAuthorityMintsError(
+        unknownError instanceof Error
+          ? unknownError.message
+          : "Failed to load authority mints."
+      );
+      setAuthorityMintsLoaded(true);
+    } finally {
+      setAuthorityMintsLoading(false);
+    }
+  }, [activeTokenProgramPublicKey, authorityScanScope, connection, publicKey]);
 
   const runWalletTransaction = async (
     transaction: Transaction,
@@ -326,10 +508,14 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
       const signature = await runWalletTransaction(transaction, [mintKeypair]);
       const mintBase58 = mintKeypair.publicKey.toBase58();
       setCreatedMint(mintBase58);
+      setCreatedMints((current) =>
+        [mintBase58, ...current.filter((item) => item !== mintBase58)].slice(0, 10)
+      );
       setMintAddress((current) => current || mintBase58);
       setDistributionMintAddress((current) => current || mintBase58);
       setAuthorityMint((current) => current || mintBase58);
       setMetadataMint((current) => current || mintBase58);
+      void loadAuthorityMints();
       setStatus({
         severity: "success",
         message: `Created mint ${mintBase58}`,
@@ -460,6 +646,7 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
       );
 
       const signature = await runWalletTransaction(transaction);
+      void loadAuthorityMints();
       setStatus({
         severity: "success",
         message:
@@ -771,128 +958,158 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
     }
   };
 
+  const uploadFileToIrys = async (file: File) => {
+    if (!publicKey) {
+      throw new Error("Connect your wallet first.");
+    }
+    if (!wallet?.adapter) {
+      throw new Error("Wallet adapter is unavailable.");
+    }
+    const signerAdapter = wallet.adapter as MessageSignerWalletAdapter;
+    if (!("signMessage" in signerAdapter) || !signerAdapter.signMessage) {
+      throw new Error(
+        "Selected wallet does not support message signing required for Irys uploads."
+      );
+    }
+
+    const irysNode = normalizeBaseUrl(
+      process.env.NEXT_PUBLIC_IRYS_NODE_URL || "https://uploader.irys.xyz"
+    );
+    const irysGateway = normalizeBaseUrl(
+      process.env.NEXT_PUBLIC_IRYS_GATEWAY_URL || "https://gateway.irys.xyz"
+    );
+    const contentType = file.type || "application/octet-stream";
+    const fileBytes = new Uint8Array(await file.arrayBuffer());
+    const irysBundles = await import("@irys/bundles/web");
+
+    const signer = new irysBundles.InjectedSolanaSigner(signerAdapter);
+    const dataItem = irysBundles.createData(fileBytes, signer, {
+      tags: [{ name: "Content-Type", value: contentType }]
+    });
+    await dataItem.sign(signer);
+    const rawDataItem = new Uint8Array(dataItem.getRaw());
+
+    const [priceResponse, balanceResponse] = await Promise.all([
+      fetch(
+        `${irysNode}/price/solana/${rawDataItem.byteLength}?address=${publicKey.toBase58()}`
+      ),
+      fetch(`${irysNode}/account/balance/solana?address=${publicKey.toBase58()}`)
+    ]);
+
+    if (!priceResponse.ok) {
+      const reason = await priceResponse.text();
+      throw new Error(`Failed to fetch Irys price: ${reason || priceResponse.status}`);
+    }
+    if (!balanceResponse.ok) {
+      const reason = await balanceResponse.text();
+      throw new Error(`Failed to fetch Irys balance: ${reason || balanceResponse.status}`);
+    }
+
+    const priceText = await priceResponse.text();
+    const priceAtomic = parseAtomicAmount(priceText.trim());
+    const balanceJson = (await balanceResponse.json()) as { balance?: unknown };
+    const balanceAtomic = parseAtomicAmount(balanceJson.balance ?? "0");
+
+    if (balanceAtomic < priceAtomic) {
+      const topUpAmount = priceAtomic - balanceAtomic;
+      if (topUpAmount > BigInt(Number.MAX_SAFE_INTEGER)) {
+        throw new Error("Required Irys top-up is too large for this client flow.");
+      }
+
+      const infoResponse = await fetch(`${irysNode}/info`);
+      if (!infoResponse.ok) {
+        const reason = await infoResponse.text();
+        throw new Error(`Failed to fetch Irys node info: ${reason || infoResponse.status}`);
+      }
+      const infoJson = (await infoResponse.json()) as {
+        addresses?: Record<string, string>;
+      };
+      const bundlerSolAddress = infoJson.addresses?.solana;
+      if (!bundlerSolAddress) {
+        throw new Error("Irys node does not expose a Solana funding address.");
+      }
+
+      const fundingTx = new Transaction().add(
+        SystemProgram.transfer({
+          fromPubkey: publicKey,
+          toPubkey: new PublicKey(bundlerSolAddress),
+          lamports: Number(topUpAmount)
+        })
+      );
+      const fundingSignature = await sendTransaction(fundingTx, connection);
+      await connection.confirmTransaction(fundingSignature, "confirmed");
+
+      const registerFundResponse = await fetch(`${irysNode}/account/balance/solana`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tx_id: fundingSignature })
+      });
+      if (!registerFundResponse.ok && registerFundResponse.status !== 202) {
+        const reason = await registerFundResponse.text();
+        throw new Error(
+          `Failed to register Irys funding tx: ${reason || registerFundResponse.status}`
+        );
+      }
+    }
+
+    const uploadResponse = await fetch(`${irysNode}/tx/solana`, {
+      method: "POST",
+      headers: { "Content-Type": "application/octet-stream" },
+      body: rawDataItem
+    });
+    if (!uploadResponse.ok) {
+      const reason = await uploadResponse.text();
+      throw new Error(`Irys upload failed: ${reason || uploadResponse.status}`);
+    }
+
+    const uploadPayload = (await uploadResponse.json()) as { id?: string };
+    if (!uploadPayload.id) {
+      throw new Error("Irys upload succeeded but no upload id was returned.");
+    }
+
+    return `${irysGateway}/${uploadPayload.id}`;
+  };
+
+  const applyTokenImageUriToDraft = (nextImageUri: string) => {
+    const normalizedUri = nextImageUri.trim();
+    if (!normalizedUri) {
+      throw new Error("Token image URI is required.");
+    }
+
+    const parsed = JSON.parse(metadataJsonDraft) as Record<string, unknown>;
+    const nextDraft: Record<string, unknown> = { ...parsed, image: normalizedUri };
+
+    const currentProperties =
+      parsed.properties && typeof parsed.properties === "object"
+        ? { ...(parsed.properties as Record<string, unknown>) }
+        : {};
+    const currentFiles = Array.isArray(currentProperties.files)
+      ? [...currentProperties.files]
+      : [];
+    const firstFile =
+      currentFiles[0] && typeof currentFiles[0] === "object"
+        ? { ...(currentFiles[0] as Record<string, unknown>) }
+        : {};
+    const detectedType =
+      typeof firstFile.type === "string" ? firstFile.type : "image/png";
+    currentProperties.files = [
+      { ...firstFile, uri: normalizedUri, type: detectedType },
+      ...currentFiles.slice(1)
+    ];
+    if (typeof currentProperties.category !== "string") {
+      currentProperties.category = "image";
+    }
+    nextDraft.properties = currentProperties;
+
+    setMetadataJsonDraft(JSON.stringify(nextDraft, null, 2));
+    setTokenImageUri(normalizedUri);
+  };
+
   const uploadMetadataContent = async (file: File) => {
     setIsUploadingMetadata(true);
     setStatus(null);
     try {
-      if (!publicKey) {
-        throw new Error("Connect your wallet first.");
-      }
-      if (!wallet?.adapter) {
-        throw new Error("Wallet adapter is unavailable.");
-      }
-      const signerAdapter = wallet.adapter as MessageSignerWalletAdapter;
-      if (!("signMessage" in signerAdapter) || !signerAdapter.signMessage) {
-        throw new Error(
-          "Selected wallet does not support message signing required for Irys uploads."
-        );
-      }
-
-      const irysNode = normalizeBaseUrl(
-        process.env.NEXT_PUBLIC_IRYS_NODE_URL || "https://uploader.irys.xyz"
-      );
-      const irysGateway = normalizeBaseUrl(
-        process.env.NEXT_PUBLIC_IRYS_GATEWAY_URL || "https://gateway.irys.xyz"
-      );
-      const contentType = file.type || "application/json";
-      const fileBytes = new Uint8Array(await file.arrayBuffer());
-      const irysBundles = await import("@irys/bundles/web");
-
-      const signer = new irysBundles.InjectedSolanaSigner(
-        signerAdapter
-      );
-      const dataItem = irysBundles.createData(fileBytes, signer, {
-        tags: [{ name: "Content-Type", value: contentType }]
-      });
-      await dataItem.sign(signer);
-      const rawDataItem = new Uint8Array(dataItem.getRaw());
-
-      const [priceResponse, balanceResponse] = await Promise.all([
-        fetch(
-          `${irysNode}/price/solana/${rawDataItem.byteLength}?address=${publicKey.toBase58()}`
-        ),
-        fetch(
-          `${irysNode}/account/balance/solana?address=${publicKey.toBase58()}`
-        )
-      ]);
-
-      if (!priceResponse.ok) {
-        const reason = await priceResponse.text();
-        throw new Error(`Failed to fetch Irys price: ${reason || priceResponse.status}`);
-      }
-      if (!balanceResponse.ok) {
-        const reason = await balanceResponse.text();
-        throw new Error(
-          `Failed to fetch Irys balance: ${reason || balanceResponse.status}`
-        );
-      }
-
-      const priceText = await priceResponse.text();
-      const priceAtomic = parseAtomicAmount(priceText.trim());
-      const balanceJson = (await balanceResponse.json()) as { balance?: unknown };
-      const balanceAtomic = parseAtomicAmount(balanceJson.balance ?? "0");
-
-      if (balanceAtomic < priceAtomic) {
-        const topUpAmount = priceAtomic - balanceAtomic;
-        if (topUpAmount > BigInt(Number.MAX_SAFE_INTEGER)) {
-          throw new Error("Required Irys top-up is too large for this client flow.");
-        }
-
-        const infoResponse = await fetch(`${irysNode}/info`);
-        if (!infoResponse.ok) {
-          const reason = await infoResponse.text();
-          throw new Error(`Failed to fetch Irys node info: ${reason || infoResponse.status}`);
-        }
-        const infoJson = (await infoResponse.json()) as {
-          addresses?: Record<string, string>;
-        };
-        const bundlerSolAddress = infoJson.addresses?.solana;
-        if (!bundlerSolAddress) {
-          throw new Error("Irys node does not expose a Solana funding address.");
-        }
-
-        const fundingTx = new Transaction().add(
-          SystemProgram.transfer({
-            fromPubkey: publicKey,
-            toPubkey: new PublicKey(bundlerSolAddress),
-            lamports: Number(topUpAmount)
-          })
-        );
-        const fundingSignature = await sendTransaction(fundingTx, connection);
-        await connection.confirmTransaction(fundingSignature, "confirmed");
-
-        const registerFundResponse = await fetch(
-          `${irysNode}/account/balance/solana`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ tx_id: fundingSignature })
-          }
-        );
-        if (!registerFundResponse.ok && registerFundResponse.status !== 202) {
-          const reason = await registerFundResponse.text();
-          throw new Error(
-            `Failed to register Irys funding tx: ${reason || registerFundResponse.status}`
-          );
-        }
-      }
-
-      const uploadResponse = await fetch(`${irysNode}/tx/solana`, {
-        method: "POST",
-        headers: { "Content-Type": "application/octet-stream" },
-        body: rawDataItem
-      });
-      if (!uploadResponse.ok) {
-        const reason = await uploadResponse.text();
-        throw new Error(`Irys upload failed: ${reason || uploadResponse.status}`);
-      }
-
-      const uploadPayload = (await uploadResponse.json()) as { id?: string };
-      if (!uploadPayload.id) {
-        throw new Error("Irys upload succeeded but no upload id was returned.");
-      }
-
-      const finalUrl = `${irysGateway}/${uploadPayload.id}`;
+      const finalUrl = await uploadFileToIrys(file);
       setUploadedMetadataUrl(finalUrl);
       setMetadataUri(finalUrl);
       setMetadataUriOnlyValue(finalUrl);
@@ -940,10 +1157,59 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
     }
   };
 
+  const uploadTokenImageToIrys = async (file: File | null) => {
+    if (!file) {
+      setStatus({ severity: "error", message: "Select an image file first." });
+      return;
+    }
+
+    setIsUploadingMetadata(true);
+    setStatus(null);
+    try {
+      const imageUrl = await uploadFileToIrys(file);
+      setUploadedImageUrl(imageUrl);
+      applyTokenImageUriToDraft(imageUrl);
+      setStatus({
+        severity: "success",
+        message: "Token image uploaded and metadata JSON image URI updated."
+      });
+    } catch (unknownError) {
+      setStatus({
+        severity: "error",
+        message:
+          unknownError instanceof Error
+            ? unknownError.message
+            : "Failed to upload token image."
+      });
+    } finally {
+      setIsUploadingMetadata(false);
+    }
+  };
+
+  const applyTokenImageUriInput = () => {
+    setStatus(null);
+    try {
+      applyTokenImageUriToDraft(tokenImageUri);
+      setStatus({
+        severity: "info",
+        message: "Token image URI applied to metadata JSON draft."
+      });
+    } catch (unknownError) {
+      setStatus({
+        severity: "error",
+        message:
+          unknownError instanceof Error
+            ? unknownError.message
+            : "Failed to apply token image URI."
+      });
+    }
+  };
+
   const prefillMetadataJsonDraft = () => {
     const template = buildTokenMetadataTemplate(
       metadataName.trim(),
-      metadataSymbol.trim()
+      metadataSymbol.trim(),
+      tokenImageUri.trim()
     );
     setMetadataJsonDraft(JSON.stringify(template, null, 2));
     setStatus({
@@ -970,9 +1236,13 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
               select
               size="small"
               label="Token Program Preset"
-              value={tokenProgramInput}
+              value={selectedTokenProgramPreset}
               onChange={(event) => {
-                setTokenProgramInput(event.target.value);
+                const nextPreset = event.target.value;
+                if (nextPreset === "custom") {
+                  return;
+                }
+                setTokenProgramInput(nextPreset);
               }}
               sx={{ minWidth: { xs: "100%", md: 260 } }}
             >
@@ -981,7 +1251,7 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
                   {option.label}
                 </MenuItem>
               ))}
-              <MenuItem value={tokenProgramInput}>Custom</MenuItem>
+              <MenuItem value="custom">Custom</MenuItem>
             </TextField>
             <TextField
               size="small"
@@ -1033,10 +1303,199 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
           <Card variant="outlined" sx={{ borderRadius: 1.5 }}>
             <CardContent sx={{ p: 1.2 }}>
               <Stack spacing={1}>
+                <Stack direction="row" justifyContent="space-between" alignItems="center">
+                  <Typography variant="subtitle2">Authority Mints</Typography>
+                  <Button
+                    size="small"
+                    variant="text"
+                    onClick={() => {
+                      void loadAuthorityMints();
+                    }}
+                    disabled={!connected || authorityMintsLoading}
+                  >
+                    Refresh
+                  </Button>
+                </Stack>
+                <Typography variant="caption" color="text.secondary">
+                  Mints where your connected wallet is mint and/or freeze authority.
+                </Typography>
+                <Stack direction={{ xs: "column", md: "row" }} spacing={1}>
+                  <TextField
+                    select
+                    size="small"
+                    label="Scan Scope"
+                    value={authorityScanScope}
+                    onChange={(event) => {
+                      setAuthorityScanScope(
+                        event.target.value as "active" | "all"
+                      );
+                      setAuthorityMintsLoaded(false);
+                    }}
+                    sx={{ minWidth: { xs: "100%", md: 220 } }}
+                  >
+                    <MenuItem value="active">Active Token Program</MenuItem>
+                    <MenuItem value="all">All Programs (heavier)</MenuItem>
+                  </TextField>
+                  <Button
+                    variant="outlined"
+                    onClick={() => {
+                      void loadAuthorityMints();
+                    }}
+                    disabled={!connected || authorityMintsLoading}
+                  >
+                    Load Authority Mints
+                  </Button>
+                </Stack>
+                {createdMints.length > 0 ? (
+                  <Stack direction="row" spacing={0.8} flexWrap="wrap" useFlexGap>
+                    {createdMints.map((mint) => (
+                      <Chip
+                        key={mint}
+                        size="small"
+                        variant="outlined"
+                        label={`New ${shortenAddress(mint)}`}
+                        component="a"
+                        clickable
+                        href={explorerAddressUrl(mint)}
+                        target="_blank"
+                        rel="noreferrer"
+                      />
+                    ))}
+                  </Stack>
+                ) : null}
+                {authorityMintsError ? (
+                  <Alert severity="warning">{authorityMintsError}</Alert>
+                ) : null}
+                {authorityMintsLoading ? (
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <CircularProgress size={16} />
+                    <Typography variant="caption" color="text.secondary">
+                      Loading authority mints...
+                    </Typography>
+                  </Stack>
+                ) : null}
+                {!authorityMintsLoading && !authorityMintsLoaded ? (
+                  <Typography variant="caption" color="text.secondary">
+                    Scan is manual to avoid RPC gateway timeouts on large token-program index scans.
+                  </Typography>
+                ) : null}
+                {!authorityMintsLoading &&
+                authorityMintsLoaded &&
+                authorityMints.length === 0 ? (
+                  <Typography variant="caption" color="text.secondary">
+                    No mints found for this wallet authority.
+                  </Typography>
+                ) : null}
+                {!authorityMintsLoading && authorityMints.length > 0 ? (
+                  <Stack spacing={0.7}>
+                    {authorityMints.slice(0, 24).map((mintEntry) => (
+                      <Card key={`${mintEntry.programId}:${mintEntry.mint}`} variant="outlined" sx={{ borderRadius: 1.1 }}>
+                        <CardContent sx={{ p: 1, "&:last-child": { pb: 1 } }}>
+                          <Stack spacing={0.6}>
+                            <Stack direction="row" justifyContent="space-between" alignItems="center">
+                              <Typography
+                                variant="caption"
+                                sx={{ fontFamily: "var(--font-mono), monospace", wordBreak: "break-all" }}
+                              >
+                                {mintEntry.mint}
+                              </Typography>
+                              <Button
+                                size="small"
+                                href={explorerAddressUrl(mintEntry.mint)}
+                                target="_blank"
+                                rel="noreferrer"
+                              >
+                                Explorer
+                              </Button>
+                            </Stack>
+                            <Stack direction="row" spacing={0.7} flexWrap="wrap" useFlexGap>
+                              <Chip
+                                size="small"
+                                variant="outlined"
+                                label={
+                                  mintEntry.programId === TOKEN_2022_PROGRAM_ID.toBase58()
+                                    ? "Token-2022"
+                                    : "Token"
+                                }
+                              />
+                              {mintEntry.hasMintAuthority ? (
+                                <Chip size="small" color="primary" variant="outlined" label="Mint Authority" />
+                              ) : null}
+                              {mintEntry.hasFreezeAuthority ? (
+                                <Chip size="small" color="secondary" variant="outlined" label="Freeze Authority" />
+                              ) : null}
+                              <Chip
+                                size="small"
+                                variant="outlined"
+                                label={`Supply ${mintEntry.supplyLabel}`}
+                              />
+                              <Chip
+                                size="small"
+                                variant="outlined"
+                                label={mintEntry.isInitialized ? "Initialized" : "Uninitialized"}
+                              />
+                            </Stack>
+                          </Stack>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </Stack>
+                ) : null}
+              </Stack>
+            </CardContent>
+          </Card>
+
+          <Card variant="outlined" sx={{ borderRadius: 1.5 }}>
+            <CardContent sx={{ p: 1.2 }}>
+              <Stack spacing={1}>
                 <Typography variant="subtitle2">Upload Token Metadata (Irys)</Typography>
                 <Typography variant="caption" color="text.secondary">
                   User-funded upload from connected wallet. Write metadata JSON with a template or upload a file.
                 </Typography>
+                <TextField
+                  size="small"
+                  label="Token Image URI"
+                  value={tokenImageUri}
+                  onChange={(event) => {
+                    setTokenImageUri(event.target.value);
+                  }}
+                  placeholder="https://.../token-image.png"
+                />
+                <Stack direction={{ xs: "column", md: "row" }} spacing={1}>
+                  <Button
+                    variant="outlined"
+                    onClick={applyTokenImageUriInput}
+                    disabled={isUploadingMetadata}
+                  >
+                    Apply Image URI to JSON
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    component="label"
+                    disabled={isUploadingMetadata}
+                  >
+                    Upload Image File
+                    <input
+                      hidden
+                      type="file"
+                      accept="image/*"
+                      onChange={(event) => {
+                        const selectedFile = event.target.files?.[0] ?? null;
+                        void uploadTokenImageToIrys(selectedFile);
+                        event.currentTarget.value = "";
+                      }}
+                    />
+                  </Button>
+                </Stack>
+                {uploadedImageUrl ? (
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    sx={{ wordBreak: "break-all", fontFamily: "var(--font-mono), monospace" }}
+                  >
+                    Uploaded Image URI: {uploadedImageUrl}
+                  </Typography>
+                ) : null}
                 <TextField
                   multiline
                   minRows={8}
