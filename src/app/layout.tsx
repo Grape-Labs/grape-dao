@@ -17,9 +17,50 @@ const monoFont = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Grape Hub",
+  metadataBase: new URL("https://grape.art"),
+  title: {
+    default: "Grape Hub",
+    template: "%s | Grape Hub"
+  },
   description:
-    "Grape Hub at grape.art: Solana products across reputation, verification, access, governance, and wallet connectivity."
+    "Grape Hub at grape.art: Solana products across reputation, verification, access, governance, and wallet connectivity.",
+  alternates: {
+    canonical: "/"
+  },
+  icons: {
+    icon: [
+      { url: "/favicon.ico", type: "image/x-icon" },
+      { url: "/images/favicon.ico", type: "image/x-icon" }
+    ],
+    shortcut: "/favicon.ico",
+    apple: [
+      { url: "/apple-icon.png", type: "image/png", sizes: "180x180" },
+      { url: "/images/apple-icon.png", type: "image/png", sizes: "180x180" }
+    ]
+  },
+  openGraph: {
+    type: "website",
+    siteName: "Grape Hub",
+    url: "https://grape.art",
+    title: "Grape Hub | grape.art",
+    description:
+      "Mainnet-ready identity, reputation, access, and governance primitives for communities on Solana.",
+    images: [
+      {
+        url: "/opengraph-image",
+        width: 1200,
+        height: 630,
+        alt: "Grape Hub on Solana"
+      }
+    ]
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Grape Hub | grape.art",
+    description:
+      "Identity, reputation, access, and governance primitives for communities on Solana.",
+    images: ["/twitter-image"]
+  }
 };
 
 export default function RootLayout({
