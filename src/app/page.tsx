@@ -133,7 +133,9 @@ export default function Home() {
                   >
                     Join Discord
                   </Button>
-                  <Chip label="Mainnet Live" color="primary" variant="outlined" />
+                  <Button variant="outlined" color="primary" href="#identity-console">
+                    Identity
+                  </Button>
                 </Stack>
                 <Stack direction={{ xs: "column", md: "row" }} spacing={1}>
                   <Chip label="Programs: 4" variant="outlined" color="secondary" />
@@ -329,7 +331,7 @@ export default function Home() {
         </Card>
       </Box>
 
-      <Box mt={5}>
+      <Box mt={5} id="identity-console">
         <WalletSection />
       </Box>
     </Container>
