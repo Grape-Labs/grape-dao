@@ -149,7 +149,7 @@ export default function Home() {
                 </Stack>
                 <Stack direction={{ xs: "column", md: "row" }} spacing={1}>
                   <Chip label="Programs: 4" variant="outlined" color="secondary" />
-                  <Chip label="SPL Governance UI" variant="outlined" color="secondary" />
+                  <Chip label="Governance UI" variant="outlined" color="secondary" />
                 </Stack>
               </Stack>
             </Grid>
