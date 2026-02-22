@@ -66,9 +66,14 @@ export function useWalletHoldings(
       return null;
     }
   }, [targetAddress]);
-  const ownerPublicKey = externalTargetPublicKey ?? (connected ? publicKey : null);
+  const hasExplicitTarget = Boolean(targetAddress);
+  const ownerPublicKey = hasExplicitTarget
+    ? externalTargetPublicKey
+    : connected
+      ? publicKey
+      : null;
   const ownerAddress = ownerPublicKey?.toBase58() ?? null;
-  const isExternalTarget = Boolean(targetAddress);
+  const isExternalTarget = hasExplicitTarget;
 
   const refresh = useCallback(() => {
     setRefreshIndex((value) => value + 1);
@@ -80,7 +85,7 @@ export function useWalletHoldings(
     async function loadHoldings() {
       if (targetAddress && !externalTargetPublicKey) {
         setHoldings(INITIAL_HOLDINGS);
-        setError("Invalid wallet address.");
+        setError("Invalid wallet address. Solana addresses are case-sensitive.");
         setIsLoading(false);
         setUpdatedAt(null);
         return;

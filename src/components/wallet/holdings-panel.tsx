@@ -564,9 +564,15 @@ export function HoldingsPanel({ holdingsState }: HoldingsPanelProps) {
 
         <Divider sx={{ my: 1.5 }} />
         {!ownerAddress ? (
-          <Typography color="text.secondary">
-            Connect your wallet identity or open `/identity/[publickey]` to view holdings.
-          </Typography>
+          isLoading ? (
+            <Typography color="text.secondary">Loading holdings...</Typography>
+          ) : error ? (
+            <Alert severity="error">{error}</Alert>
+          ) : (
+            <Typography color="text.secondary">
+              Connect your wallet identity or open `/identity/[publickey]` to view holdings.
+            </Typography>
+          )
         ) : (
           <>
             <Typography
