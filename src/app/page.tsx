@@ -187,9 +187,6 @@ export default function Home() {
           <Typography variant="overline" color="primary.light">
             Products
           </Typography>
-          <Typography variant="h2" sx={{ fontSize: { xs: "1.7rem", md: "2.2rem" } }}>
-            Grape
-          </Typography>
         </Stack>
         <Grid container spacing={2} mt={0.5}>
           {grapeProducts.map((product, index) => (
