@@ -164,6 +164,15 @@ export default function Home() {
                   >
                     Join Discord
                   </Button>
+                  <Button
+                    variant="outlined"
+                    color="secondary"
+                    href={grapeLinks.github}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    GitHub
+                  </Button>
                   <Button variant="outlined" color="primary" href="/identity">
                     Identity
                   </Button>
