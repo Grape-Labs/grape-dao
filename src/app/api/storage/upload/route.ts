@@ -106,6 +106,16 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
+    if (!boolEnv("IRYS_SERVER_UPLOAD_ENABLED", false)) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            "Server-sponsored Irys upload is disabled. Use connected-wallet upload mode."
+        },
+        { status: 403 }
+      );
+    }
 
     const form = await request.formData();
     const file = form.get("file");

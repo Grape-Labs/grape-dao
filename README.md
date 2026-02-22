@@ -149,14 +149,25 @@ npm run build
 
 ### Irys Upload (Token Metadata)
 
-- `IRYS_SOLANA_PRIVATE_KEY` (required, server-only JSON array keypair)
-- `IRYS_NETWORK` (optional, default: `mainnet`)
-- `IRYS_GATEWAY_URL` (optional, default: `https://gateway.irys.xyz`)
-- `IRYS_RPC_URL` (optional override)
-- `IRYS_MAX_UPLOAD_BYTES` (optional, default: `10485760`)
-- `IRYS_OP_TIMEOUT_MS` (optional, default: `8000`)
-- `IRYS_UPLOAD_TIMEOUT_MS` (optional, default: `25000`)
-- `IRYS_AUTO_FUND` (optional, default: `false`)
-- fallback RPC envs used when `IRYS_RPC_URL` is not set:
-  - `NEXT_PUBLIC_RPC_SHYFT_MAINNET` or `NEXT_PUBLIC_SOLANA_DEFAULT_RPC_URL` for mainnet
-  - `NEXT_PUBLIC_RPC_SHYFT_DEVNET` for devnet
+- Default mode is user-funded from connected wallet (no server key required).
+- Optional client config:
+  - `NEXT_PUBLIC_IRYS_NODE_URL` (default: `https://uploader.irys.xyz`)
+  - `NEXT_PUBLIC_IRYS_GATEWAY_URL` (default: `https://gateway.irys.xyz`)
+
+### Optional Server Upload Mode (Admin/Sponsored)
+
+- Disabled by default.
+- Enable with `IRYS_SERVER_UPLOAD_ENABLED=true`.
+- Required when enabled:
+  - `IRYS_SOLANA_PRIVATE_KEY` (server-only JSON array keypair)
+- Optional server config:
+  - `IRYS_NETWORK` (default: `mainnet`)
+  - `IRYS_GATEWAY_URL` (default: `https://gateway.irys.xyz`)
+  - `IRYS_RPC_URL` (optional override)
+  - `IRYS_MAX_UPLOAD_BYTES` (default: `10485760`)
+  - `IRYS_OP_TIMEOUT_MS` (default: `8000`)
+  - `IRYS_UPLOAD_TIMEOUT_MS` (default: `25000`)
+  - `IRYS_AUTO_FUND` (default: `false`)
+  - fallback RPC envs used when `IRYS_RPC_URL` is not set:
+    - `NEXT_PUBLIC_RPC_SHYFT_MAINNET` or `NEXT_PUBLIC_SOLANA_DEFAULT_RPC_URL` for mainnet
+    - `NEXT_PUBLIC_RPC_SHYFT_DEVNET` for devnet

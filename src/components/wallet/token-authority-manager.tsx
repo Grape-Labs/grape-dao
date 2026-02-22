@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
+import type { MessageSignerWalletAdapter } from "@solana/wallet-adapter-base";
 import {
   ASSOCIATED_TOKEN_PROGRAM_ID,
   AuthorityType,
@@ -100,6 +101,34 @@ function parseAmountToBaseUnits(input: string, decimals: number): bigint {
   return BigInt(combined);
 }
 
+function parseAtomicAmount(value: unknown): bigint {
+  if (typeof value === "bigint") {
+    return value;
+  }
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) {
+      throw new Error("Invalid numeric value.");
+    }
+    return BigInt(Math.floor(value));
+  }
+  if (typeof value === "string") {
+    return BigInt(value);
+  }
+  if (
+    value &&
+    typeof value === "object" &&
+    "toString" in value &&
+    typeof value.toString === "function"
+  ) {
+    return BigInt(value.toString());
+  }
+  throw new Error("Unable to parse atomic amount.");
+}
+
+function normalizeBaseUrl(value: string) {
+  return value.replace(/\/+$/, "");
+}
+
 function parseDistributionRecipients(
   input: string,
   decimals: number
@@ -167,7 +196,7 @@ function findMetadataPda(mint: PublicKey) {
 
 export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerProps) {
   const { connection } = useConnection();
-  const { connected, publicKey, sendTransaction } = useWallet();
+  const { connected, publicKey, sendTransaction, wallet } = useWallet();
   const { refresh } = holdingsState;
 
   const [status, setStatus] = useState<StatusState>(null);
@@ -746,31 +775,130 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
     setIsUploadingMetadata(true);
     setStatus(null);
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("contentType", file.type || "application/json");
-
-      const response = await fetch("/api/storage/upload?provider=irys", {
-        method: "POST",
-        body: formData
-      });
-
-      const payload = (await response.json()) as {
-        ok?: boolean;
-        error?: string;
-        url?: string;
-      };
-
-      if (!response.ok || !payload.ok || !payload.url) {
-        throw new Error(payload.error || "Irys upload failed.");
+      if (!publicKey) {
+        throw new Error("Connect your wallet first.");
+      }
+      if (!wallet?.adapter) {
+        throw new Error("Wallet adapter is unavailable.");
+      }
+      const signerAdapter = wallet.adapter as MessageSignerWalletAdapter;
+      if (!("signMessage" in signerAdapter) || !signerAdapter.signMessage) {
+        throw new Error(
+          "Selected wallet does not support message signing required for Irys uploads."
+        );
       }
 
-      setUploadedMetadataUrl(payload.url);
-      setMetadataUri(payload.url);
-      setMetadataUriOnlyValue(payload.url);
+      const irysNode = normalizeBaseUrl(
+        process.env.NEXT_PUBLIC_IRYS_NODE_URL || "https://uploader.irys.xyz"
+      );
+      const irysGateway = normalizeBaseUrl(
+        process.env.NEXT_PUBLIC_IRYS_GATEWAY_URL || "https://gateway.irys.xyz"
+      );
+      const contentType = file.type || "application/json";
+      const fileBytes = new Uint8Array(await file.arrayBuffer());
+      const irysBundles = await import("@irys/bundles/web");
+
+      const signer = new irysBundles.InjectedSolanaSigner(
+        signerAdapter
+      );
+      const dataItem = irysBundles.createData(fileBytes, signer, {
+        tags: [{ name: "Content-Type", value: contentType }]
+      });
+      await dataItem.sign(signer);
+      const rawDataItem = new Uint8Array(dataItem.getRaw());
+
+      const [priceResponse, balanceResponse] = await Promise.all([
+        fetch(
+          `${irysNode}/price/solana/${rawDataItem.byteLength}?address=${publicKey.toBase58()}`
+        ),
+        fetch(
+          `${irysNode}/account/balance/solana?address=${publicKey.toBase58()}`
+        )
+      ]);
+
+      if (!priceResponse.ok) {
+        const reason = await priceResponse.text();
+        throw new Error(`Failed to fetch Irys price: ${reason || priceResponse.status}`);
+      }
+      if (!balanceResponse.ok) {
+        const reason = await balanceResponse.text();
+        throw new Error(
+          `Failed to fetch Irys balance: ${reason || balanceResponse.status}`
+        );
+      }
+
+      const priceText = await priceResponse.text();
+      const priceAtomic = parseAtomicAmount(priceText.trim());
+      const balanceJson = (await balanceResponse.json()) as { balance?: unknown };
+      const balanceAtomic = parseAtomicAmount(balanceJson.balance ?? "0");
+
+      if (balanceAtomic < priceAtomic) {
+        const topUpAmount = priceAtomic - balanceAtomic;
+        if (topUpAmount > BigInt(Number.MAX_SAFE_INTEGER)) {
+          throw new Error("Required Irys top-up is too large for this client flow.");
+        }
+
+        const infoResponse = await fetch(`${irysNode}/info`);
+        if (!infoResponse.ok) {
+          const reason = await infoResponse.text();
+          throw new Error(`Failed to fetch Irys node info: ${reason || infoResponse.status}`);
+        }
+        const infoJson = (await infoResponse.json()) as {
+          addresses?: Record<string, string>;
+        };
+        const bundlerSolAddress = infoJson.addresses?.solana;
+        if (!bundlerSolAddress) {
+          throw new Error("Irys node does not expose a Solana funding address.");
+        }
+
+        const fundingTx = new Transaction().add(
+          SystemProgram.transfer({
+            fromPubkey: publicKey,
+            toPubkey: new PublicKey(bundlerSolAddress),
+            lamports: Number(topUpAmount)
+          })
+        );
+        const fundingSignature = await sendTransaction(fundingTx, connection);
+        await connection.confirmTransaction(fundingSignature, "confirmed");
+
+        const registerFundResponse = await fetch(
+          `${irysNode}/account/balance/solana`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ tx_id: fundingSignature })
+          }
+        );
+        if (!registerFundResponse.ok && registerFundResponse.status !== 202) {
+          const reason = await registerFundResponse.text();
+          throw new Error(
+            `Failed to register Irys funding tx: ${reason || registerFundResponse.status}`
+          );
+        }
+      }
+
+      const uploadResponse = await fetch(`${irysNode}/tx/solana`, {
+        method: "POST",
+        headers: { "Content-Type": "application/octet-stream" },
+        body: rawDataItem
+      });
+      if (!uploadResponse.ok) {
+        const reason = await uploadResponse.text();
+        throw new Error(`Irys upload failed: ${reason || uploadResponse.status}`);
+      }
+
+      const uploadPayload = (await uploadResponse.json()) as { id?: string };
+      if (!uploadPayload.id) {
+        throw new Error("Irys upload succeeded but no upload id was returned.");
+      }
+
+      const finalUrl = `${irysGateway}/${uploadPayload.id}`;
+      setUploadedMetadataUrl(finalUrl);
+      setMetadataUri(finalUrl);
+      setMetadataUriOnlyValue(finalUrl);
       setStatus({
         severity: "success",
-        message: "Metadata uploaded to Irys and URI fields updated."
+        message: "Metadata uploaded to Irys (user-funded) and URI fields updated."
       });
     } catch (unknownError) {
       setStatus({
@@ -907,7 +1035,7 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
               <Stack spacing={1}>
                 <Typography variant="subtitle2">Upload Token Metadata (Irys)</Typography>
                 <Typography variant="caption" color="text.secondary">
-                  Write metadata JSON using a pre-filled template or upload a file directly.
+                  User-funded upload from connected wallet. Write metadata JSON with a template or upload a file.
                 </Typography>
                 <TextField
                   multiline
