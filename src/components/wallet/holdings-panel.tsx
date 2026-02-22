@@ -579,9 +579,6 @@ export function HoldingsPanel({ holdingsState }: HoldingsPanelProps) {
               />
               <Chip variant="outlined" label={`Token Accounts: ${holdings.tokens.length}`} />
               <Chip variant="outlined" label={`NFT Candidates: ${potentialNfts.length}`} />
-              {shyftNfts.length > 0 ? (
-                <Chip variant="outlined" color="primary" label={`Shyft NFTs: ${shyftNfts.length}`} />
-              ) : null}
             </Stack>
 
             <Typography variant="caption" color="text.secondary" display="block" mt={1.2}>

@@ -265,9 +265,9 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
   const [authorityMintsLoading, setAuthorityMintsLoading] = useState(false);
   const [authorityMintsError, setAuthorityMintsError] = useState<string | null>(null);
   const [authorityMintsLoaded, setAuthorityMintsLoaded] = useState(false);
-  const [authorityScanScope, setAuthorityScanScope] = useState<"active" | "all">(
-    "active"
-  );
+  const [authorityScanScope, setAuthorityScanScope] = useState<
+    "known" | "active" | "all"
+  >("known");
 
   const [mintAddress, setMintAddress] = useState("");
   const [mintDestinationOwner, setMintDestinationOwner] = useState("");
@@ -311,6 +311,123 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
     return matchedPreset ? matchedPreset.value : "custom";
   }, [tokenProgramInput]);
 
+  const loadAuthorityMintsFromKnownMints = useCallback(async () => {
+    if (!publicKey) {
+      return [];
+    }
+
+    const knownMints = new Set<string>();
+    holdingsState.holdings.tokenAccounts.forEach((tokenAccount) => {
+      knownMints.add(tokenAccount.mint);
+    });
+    createdMints.forEach((mint) => knownMints.add(mint));
+
+    [
+      mintAddress,
+      distributionMintAddress,
+      authorityMint,
+      metadataMint,
+      metadataAuthorityMint,
+      metadataUriOnlyMint
+    ]
+      .map((value) => value.trim())
+      .filter((value) => value.length > 0)
+      .forEach((value) => knownMints.add(value));
+
+    // Include token-2022 mints owned by wallet (if any).
+    const token2022Accounts = await connection.getParsedTokenAccountsByOwner(
+      publicKey,
+      { programId: TOKEN_2022_PROGRAM_ID },
+      "confirmed"
+    );
+    token2022Accounts.value.forEach((account) => {
+      const parsedInfo = account.account.data.parsed?.info as
+        | { mint?: string }
+        | undefined;
+      if (parsedInfo?.mint) {
+        knownMints.add(parsedInfo.mint);
+      }
+    });
+
+    const mintAddresses = Array.from(knownMints);
+    if (mintAddresses.length === 0) {
+      return [] as AuthorityMint[];
+    }
+
+    const mintPublicKeys = mintAddresses.map((mint) => new PublicKey(mint));
+    const accountsInfo = await connection.getMultipleAccountsInfo(
+      mintPublicKeys,
+      "confirmed"
+    );
+    const walletAddress = publicKey.toBase58();
+
+    return mintAddresses
+      .map((mint, index) => {
+        const info = accountsInfo[index];
+        if (!info || info.data.length < 82) {
+          return null;
+        }
+        if (
+          !info.owner.equals(TOKEN_PROGRAM_ID) &&
+          !info.owner.equals(TOKEN_2022_PROGRAM_ID)
+        ) {
+          return null;
+        }
+
+        const mintAuthorityOption = readU32LE(info.data, 0);
+        const mintAuthority =
+          mintAuthorityOption === 1
+            ? new PublicKey(info.data.slice(4, 36)).toBase58()
+            : null;
+        const freezeAuthorityOption = readU32LE(info.data, 46);
+        const freezeAuthority =
+          freezeAuthorityOption === 1
+            ? new PublicKey(info.data.slice(50, 82)).toBase58()
+            : null;
+
+        const hasMintAuthority = mintAuthority === walletAddress;
+        const hasFreezeAuthority = freezeAuthority === walletAddress;
+        if (!hasMintAuthority && !hasFreezeAuthority) {
+          return null;
+        }
+
+        const decimals = info.data[44] ?? 0;
+        const isInitialized = (info.data[45] ?? 0) === 1;
+        const supplyRaw = readU64LE(info.data, 36);
+
+        return {
+          mint,
+          programId: info.owner.toBase58(),
+          hasMintAuthority,
+          hasFreezeAuthority,
+          decimals,
+          supplyLabel: formatRawUnits(supplyRaw, decimals),
+          isInitialized
+        } satisfies AuthorityMint;
+      })
+      .filter((entry): entry is AuthorityMint => Boolean(entry))
+      .sort((left, right) => {
+        if (left.hasMintAuthority !== right.hasMintAuthority) {
+          return left.hasMintAuthority ? -1 : 1;
+        }
+        if (left.hasFreezeAuthority !== right.hasFreezeAuthority) {
+          return left.hasFreezeAuthority ? -1 : 1;
+        }
+        return left.mint.localeCompare(right.mint);
+      });
+  }, [
+    authorityMint,
+    connection,
+    createdMints,
+    distributionMintAddress,
+    holdingsState.holdings.tokenAccounts,
+    metadataAuthorityMint,
+    metadataMint,
+    metadataUriOnlyMint,
+    mintAddress,
+    publicKey
+  ]);
+
   const loadAuthorityMints = useCallback(async () => {
     if (!publicKey) {
       setAuthorityMints([]);
@@ -322,112 +439,141 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
     setAuthorityMintsLoading(true);
     setAuthorityMintsError(null);
     try {
-      const walletAddress = publicKey.toBase58();
-      const programIds =
-        authorityScanScope === "all"
-          ? [TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID]
-          : [activeTokenProgramPublicKey];
-      const queryPlan = programIds.flatMap((programId) => [
-        { programId, offset: 4 },
-        { programId, offset: 50 }
-      ]);
+      let parsed: AuthorityMint[] = [];
+      if (authorityScanScope === "known") {
+        parsed = await loadAuthorityMintsFromKnownMints();
+      } else {
+        const walletAddress = publicKey.toBase58();
+        const programIds =
+          authorityScanScope === "all"
+            ? [TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID]
+            : [activeTokenProgramPublicKey];
+        const queryPlan = programIds.flatMap((programId) => [
+          { programId, offset: 4 },
+          { programId, offset: 50 }
+        ]);
 
-      const queryResults: Awaited<
-        ReturnType<typeof connection.getProgramAccounts>
-      >[] = [];
-      for (const query of queryPlan) {
-        const accounts = await connection.getProgramAccounts(query.programId, {
-          filters: [
-            { dataSize: MINT_SIZE },
-            { memcmp: { offset: query.offset, bytes: walletAddress } }
-          ],
-          dataSlice: { offset: 0, length: MINT_SIZE }
+        const queryResults: Awaited<
+          ReturnType<typeof connection.getProgramAccounts>
+        >[] = [];
+        for (const query of queryPlan) {
+          const accounts = await connection.getProgramAccounts(query.programId, {
+            filters: [
+              { dataSize: MINT_SIZE },
+              { memcmp: { offset: query.offset, bytes: walletAddress } }
+            ],
+            dataSlice: { offset: 0, length: MINT_SIZE }
+          });
+          queryResults.push(accounts);
+        }
+
+        const byMint = new Map<
+          string,
+          { mint: string; programId: string; data: Uint8Array }
+        >();
+        queryResults.forEach((accounts, queryIndex) => {
+          const query = queryPlan[queryIndex];
+          accounts.forEach((account) => {
+            const mintAddress = account.pubkey.toBase58();
+            const key = `${query.programId.toBase58()}:${mintAddress}`;
+            if (!byMint.has(key)) {
+              byMint.set(key, {
+                mint: mintAddress,
+                programId: query.programId.toBase58(),
+                data: account.account.data
+              });
+            }
+          });
         });
-        queryResults.push(accounts);
+
+        parsed = Array.from(byMint.values())
+          .map((entry) => {
+            if (entry.data.length < 82) {
+              return null;
+            }
+
+            const mintAuthorityOption = readU32LE(entry.data, 0);
+            const mintAuthority =
+              mintAuthorityOption === 1
+                ? new PublicKey(entry.data.slice(4, 36)).toBase58()
+                : null;
+
+            const freezeAuthorityOption = readU32LE(entry.data, 46);
+            const freezeAuthority =
+              freezeAuthorityOption === 1
+                ? new PublicKey(entry.data.slice(50, 82)).toBase58()
+                : null;
+
+            const hasMintAuthority = mintAuthority === walletAddress;
+            const hasFreezeAuthority = freezeAuthority === walletAddress;
+            if (!hasMintAuthority && !hasFreezeAuthority) {
+              return null;
+            }
+
+            const decimals = entry.data[44] ?? 0;
+            const isInitialized = (entry.data[45] ?? 0) === 1;
+            const supplyRaw = readU64LE(entry.data, 36);
+
+            return {
+              mint: entry.mint,
+              programId: entry.programId,
+              hasMintAuthority,
+              hasFreezeAuthority,
+              decimals,
+              supplyLabel: formatRawUnits(supplyRaw, decimals),
+              isInitialized
+            } satisfies AuthorityMint;
+          })
+          .filter((entry): entry is AuthorityMint => Boolean(entry))
+          .sort((left, right) => {
+            if (left.hasMintAuthority !== right.hasMintAuthority) {
+              return left.hasMintAuthority ? -1 : 1;
+            }
+            if (left.hasFreezeAuthority !== right.hasFreezeAuthority) {
+              return left.hasFreezeAuthority ? -1 : 1;
+            }
+            return left.mint.localeCompare(right.mint);
+          });
       }
-
-      const byMint = new Map<
-        string,
-        { mint: string; programId: string; data: Uint8Array }
-      >();
-      queryResults.forEach((accounts, queryIndex) => {
-        const query = queryPlan[queryIndex];
-        accounts.forEach((account) => {
-          const mintAddress = account.pubkey.toBase58();
-          const key = `${query.programId.toBase58()}:${mintAddress}`;
-          if (!byMint.has(key)) {
-            byMint.set(key, {
-              mint: mintAddress,
-              programId: query.programId.toBase58(),
-              data: account.account.data
-            });
-          }
-        });
-      });
-
-      const parsed = Array.from(byMint.values())
-        .map((entry) => {
-          if (entry.data.length < 82) {
-            return null;
-          }
-
-          const mintAuthorityOption = readU32LE(entry.data, 0);
-          const mintAuthority =
-            mintAuthorityOption === 1
-              ? new PublicKey(entry.data.slice(4, 36)).toBase58()
-              : null;
-
-          const freezeAuthorityOption = readU32LE(entry.data, 46);
-          const freezeAuthority =
-            freezeAuthorityOption === 1
-              ? new PublicKey(entry.data.slice(50, 82)).toBase58()
-              : null;
-
-          const hasMintAuthority = mintAuthority === walletAddress;
-          const hasFreezeAuthority = freezeAuthority === walletAddress;
-          if (!hasMintAuthority && !hasFreezeAuthority) {
-            return null;
-          }
-
-          const decimals = entry.data[44] ?? 0;
-          const isInitialized = (entry.data[45] ?? 0) === 1;
-          const supplyRaw = readU64LE(entry.data, 36);
-
-          return {
-            mint: entry.mint,
-            programId: entry.programId,
-            hasMintAuthority,
-            hasFreezeAuthority,
-            decimals,
-            supplyLabel: formatRawUnits(supplyRaw, decimals),
-            isInitialized
-          } satisfies AuthorityMint;
-        })
-        .filter((entry): entry is AuthorityMint => Boolean(entry))
-        .sort((left, right) => {
-          if (left.hasMintAuthority !== right.hasMintAuthority) {
-            return left.hasMintAuthority ? -1 : 1;
-          }
-          if (left.hasFreezeAuthority !== right.hasFreezeAuthority) {
-            return left.hasFreezeAuthority ? -1 : 1;
-          }
-          return left.mint.localeCompare(right.mint);
-        });
 
       setAuthorityMints(parsed);
       setAuthorityMintsLoaded(true);
     } catch (unknownError) {
-      setAuthorityMints([]);
-      setAuthorityMintsError(
+      const errorMessage =
         unknownError instanceof Error
           ? unknownError.message
-          : "Failed to load authority mints."
-      );
+          : "Failed to load authority mints.";
+      const shouldFallbackToKnown =
+        authorityScanScope !== "known" &&
+        /timeout|gateway|429|too\s+many|503|504/i.test(errorMessage);
+
+      if (shouldFallbackToKnown) {
+        try {
+          const fallbackResult = await loadAuthorityMintsFromKnownMints();
+          setAuthorityMints(fallbackResult);
+          setAuthorityMintsError(
+            "Program scan timed out on RPC. Showing known-mints authority view."
+          );
+          setAuthorityMintsLoaded(true);
+          return;
+        } catch {
+          // Continue to default error handling below.
+        }
+      }
+
+      setAuthorityMints([]);
+      setAuthorityMintsError(errorMessage);
       setAuthorityMintsLoaded(true);
     } finally {
       setAuthorityMintsLoading(false);
     }
-  }, [activeTokenProgramPublicKey, authorityScanScope, connection, publicKey]);
+  }, [
+    activeTokenProgramPublicKey,
+    authorityScanScope,
+    connection,
+    loadAuthorityMintsFromKnownMints,
+    publicKey
+  ]);
 
   const runWalletTransaction = async (
     transaction: Transaction,
@@ -893,19 +1039,37 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
     setIsSubmitting(true);
     setStatus(null);
     try {
-      const mintPublicKey = new PublicKey(metadataUriOnlyMint.trim());
+      const inputAddress = metadataUriOnlyMint.trim();
+      if (!inputAddress) {
+        throw new Error("Mint address or metadata PDA is required.");
+      }
+      const inputPublicKey = new PublicKey(inputAddress);
       const nextUri = metadataUriOnlyValue.trim();
       if (!nextUri) {
         throw new Error("New metadata URI is required.");
       }
 
-      const metadataPda = findMetadataPda(mintPublicKey);
-      const metadataAccountInfo = await connection.getAccountInfo(
+      let metadataPda = findMetadataPda(inputPublicKey);
+      let metadataAccountInfo = await connection.getAccountInfo(
         metadataPda,
         "confirmed"
       );
       if (!metadataAccountInfo) {
-        throw new Error("Metadata account not found for this mint.");
+        const directAccountInfo = await connection.getAccountInfo(
+          inputPublicKey,
+          "confirmed"
+        );
+        if (
+          directAccountInfo &&
+          directAccountInfo.owner.equals(TOKEN_METADATA_PROGRAM_ID)
+        ) {
+          metadataPda = inputPublicKey;
+          metadataAccountInfo = directAccountInfo;
+        } else {
+          throw new Error(
+            "Metadata account not found. Provide a mint with existing Metaplex metadata or the metadata PDA directly."
+          );
+        }
       }
 
       const [currentMetadata] = getMetadataAccountDataSerializer().deserialize(
@@ -942,7 +1106,7 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
       );
       setStatus({
         severity: "success",
-        message: "Metadata URI updated.",
+        message: `Metadata URI updated for ${metadataPda.toBase58()}.`,
         signature
       });
     } catch (unknownError) {
@@ -1333,6 +1497,7 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
                     }}
                     sx={{ minWidth: { xs: "100%", md: 220 } }}
                   >
+                    <MenuItem value="known">Known Mints (recommended)</MenuItem>
                     <MenuItem value="active">Active Token Program</MenuItem>
                     <MenuItem value="all">All Programs (heavier)</MenuItem>
                   </TextField>
@@ -1376,7 +1541,7 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
                 ) : null}
                 {!authorityMintsLoading && !authorityMintsLoaded ? (
                   <Typography variant="caption" color="text.secondary">
-                    Scan is manual to avoid RPC gateway timeouts on large token-program index scans.
+                    Scan is manual. Use Known Mints for reliable results on stricter RPC gateways.
                   </Typography>
                 ) : null}
                 {!authorityMintsLoading &&
@@ -1877,7 +2042,7 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
                 </Typography>
                 <TextField
                   size="small"
-                  label="Mint Address"
+                  label="Mint Address or Metadata PDA"
                   value={metadataUriOnlyMint}
                   onChange={(event) => {
                     setMetadataUriOnlyMint(event.target.value);
