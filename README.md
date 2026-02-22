@@ -1,7 +1,7 @@
 # Grape Hub UI
 
 Frontend for `grape.art` built with Next.js + Material UI.  
-This UI combines a product landing experience with an operational Solana Wallet Console.
+This UI combines a product landing experience with a dedicated operational Identity page.
 
 ## Stack
 
@@ -33,6 +33,8 @@ This UI combines a product landing experience with an operational Solana Wallet 
   - Animated waveform telemetry
 
 ### Wallet Console (Identity)
+
+Route: `/Identity`
 
 - Connect/disconnect wallet
 - RPC provider switcher
@@ -92,6 +94,7 @@ Before execution, users can simulate and inspect:
 ## Project Structure
 
 - `src/app/page.tsx`: landing page and top-level sections
+- `src/app/Identity/page.tsx`: dedicated Identity route for Wallet Console
 - `src/components/providers/mui-theme-provider.tsx`: theme + global motion styles
 - `src/components/providers/solana-wallet-provider.tsx`: Solana connection and RPC context
 - `src/components/solana/live-signals-panel.tsx`: live network telemetry

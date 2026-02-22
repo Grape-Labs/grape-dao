@@ -1,6 +1,5 @@
 import { grapeLinks, grapeProducts } from "@/lib/grape";
 import { LiveSignalsPanel } from "@/components/solana/live-signals-panel";
-import { WalletSection } from "@/components/wallet/wallet-section";
 import Image from "next/image";
 import {
   Avatar,
@@ -24,20 +23,28 @@ export default function Home() {
   ];
   const grapeFlow = [
     {
-      title: "Identity",
-      detail: "Wallet console for holdings, transfers, simulation, approvals, and recovery."
+      title: "OG Reputation Spaces",
+      programId: "V1NE6WCWJPRiVFq5DtaN8p87M9DmmUd2zQuVbvLgQwX",
+      detail:
+        "Season-based reputation engine with DAO config, delegate award/reset controls, transfers, metadata registry, and emergency cleanup paths."
     },
     {
-      title: "Verification + Access",
-      detail: "Use credentials and token gates to control membership and permissions."
+      title: "Grape Verification",
+      programId: "VrFyyRxPoyWxpABpBXU4YUCCF9p8giDSJUv2oXfDr5q",
+      detail:
+        "Salted identity hashing, attestor-managed verification, wallet link/unlink flows, expiry checks, and freeze controls per DAO space."
     },
     {
-      title: "Reputation + Directory",
-      detail: "Attach social context and list communities with DAO-controlled directory logic."
+      title: "Grape Access",
+      programId: "GPASSzQQF1H8cdj5pUwFkeYEE4VdMQtCrYtUaMXvPz48",
+      detail:
+        "Composable gates for reputation, verified identities, wallet links, token/NFT holdings, multi-DAO checks, and custom program validation."
     },
     {
-      title: "Governance",
-      detail: "Route everything into SPL Governance participation and operations."
+      title: "GSPL Directory",
+      programId: "GovyJPza6EV6srUcmwA1vS3EmWGdLSkkDafRE54X1Dir",
+      detail:
+        "DAO-controlled parent/child directory listings that make communities and protocol surfaces discoverable across the governance graph."
     }
   ];
 
@@ -110,9 +117,12 @@ export default function Home() {
                   </Box>
                 </Typography>
                 <Typography color="text.secondary" sx={{ maxWidth: 760 }}>
-                  Grape ships production Solana tooling for reputation,
-                  verification, access control, and DAO governance with a wallet
-                  console for real operations.
+                  Grape delivers mainnet-ready primitives for reputation,
+                  verification, access control, and DAO governance so
+                  communities can coordinate, reward, and scale on Solana.
+                </Typography>
+                <Typography color="text.secondary" sx={{ maxWidth: 760 }}>
+                  Learn more in the docs and connect with the DAO on Discord.
                 </Typography>
                 <Stack direction={{ xs: "column", sm: "row" }} spacing={1.2} alignItems={{ sm: "center" }}>
                   <Button
@@ -133,14 +143,13 @@ export default function Home() {
                   >
                     Join Discord
                   </Button>
-                  <Button variant="outlined" color="primary" href="#identity-console">
+                  <Button variant="outlined" color="primary" href="/Identity">
                     Identity
                   </Button>
                 </Stack>
                 <Stack direction={{ xs: "column", md: "row" }} spacing={1}>
                   <Chip label="Programs: 4" variant="outlined" color="secondary" />
                   <Chip label="SPL Governance UI" variant="outlined" color="secondary" />
-                  <Chip label="Wallet: Transfer / Burn / Close" variant="outlined" color="secondary" />
                 </Stack>
               </Stack>
             </Grid>
@@ -214,27 +223,6 @@ export default function Home() {
                     </Stack>
                     <Typography color="text.secondary">{product.description}</Typography>
                     <Box>
-                      <Typography variant="caption" color="text.secondary">
-                        {product.programId ? "Program ID" : "Interface"}
-                      </Typography>
-                      <Chip
-                        sx={{
-                          mt: 1.1,
-                          borderRadius: 2,
-                          maxWidth: "100%",
-                          "& .MuiChip-label": {
-                            display: "block",
-                            whiteSpace: "normal",
-                            wordBreak: "break-all",
-                            fontFamily: "var(--font-mono), monospace",
-                            py: 0.75
-                          }
-                        }}
-                        label={product.programId || "Built on SPL Governance"}
-                        variant="outlined"
-                      />
-                    </Box>
-                    <Box>
                       <Button
                         variant="contained"
                         color="primary"
@@ -281,6 +269,17 @@ export default function Home() {
                     members, enforce access, map reputation, and execute DAO
                     decisions in one integrated stack.
                   </Typography>
+                  <Typography color="text.secondary">
+                    These programs are core primitives, not isolated features.
+                    They create a common trust layer that other products,
+                    communities, and DAOs can compose without rebuilding identity,
+                    reputation, or access logic from scratch.
+                  </Typography>
+                  <Typography color="text.secondary">
+                    The strategic potential is network effects: more integrations
+                    strengthen shared attestations, shared reputation context, and
+                    reusable governance pathways across ecosystems on Solana.
+                  </Typography>
                   <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
                     <Chip label="Solana Mainnet" variant="outlined" color="secondary" />
                     <Chip label="DAO-native Primitives" variant="outlined" color="secondary" />
@@ -319,6 +318,31 @@ export default function Home() {
                             <Typography variant="body2" color="text.secondary">
                               {step.detail}
                             </Typography>
+                            <Chip
+                              size="small"
+                              variant="outlined"
+                              label={step.programId}
+                              sx={{
+                                mt: 0.8,
+                                fontFamily: "var(--font-mono), monospace",
+                                "& .MuiChip-label": {
+                                  display: "block",
+                                  whiteSpace: "normal",
+                                  wordBreak: "break-all"
+                                }
+                              }}
+                            />
+                            <Button
+                              size="small"
+                              variant="text"
+                              color="secondary"
+                              href={`https://explorer.solana.com/address/${step.programId}?cluster=mainnet`}
+                              target="_blank"
+                              rel="noreferrer"
+                              sx={{ mt: 0.4, px: 0, minWidth: 0 }}
+                            >
+                              View on Explorer
+                            </Button>
                           </Box>
                         </Stack>
                       </CardContent>
@@ -329,10 +353,6 @@ export default function Home() {
             </Grid>
           </CardContent>
         </Card>
-      </Box>
-
-      <Box mt={5} id="identity-console">
-        <WalletSection />
       </Box>
     </Container>
   );
