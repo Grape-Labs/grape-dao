@@ -23,6 +23,12 @@ import {
   TextField,
   Typography
 } from "@mui/material";
+import { useRpcEndpoint } from "@/components/providers/solana-wallet-provider";
+import {
+  SHYFT_NETWORK,
+  extractShyftResultArray,
+  fetchShyft
+} from "@/lib/shyft";
 
 type StakeAccountRow = {
   address: string;
@@ -39,6 +45,28 @@ type StatusState = {
   message: string;
   signature?: string;
 } | null;
+
+type ShyftStakeAccountShape = {
+  stake_account?: string;
+  address?: string;
+  account?: string;
+  stake_pubkey?: string;
+  balance?: number;
+  lamports?: number;
+  delegated_stake?: number;
+  delegated_lamports?: number;
+  state?: string;
+  status?: string;
+  voter?: string;
+  voter_address?: string;
+  vote_account?: string;
+  staker?: string;
+  withdrawer?: string;
+  authorized?: {
+    staker?: string;
+    withdrawer?: string;
+  };
+};
 
 function parseSolToLamports(input: string): bigint {
   const normalized = input.trim();
@@ -70,10 +98,12 @@ function shortenAddress(address: string) {
 }
 
 const NATIVE_STAKE_PROGRAM_ID = StakeProgram.programId.toBase58();
+const STAKE_REFRESH_INTERVAL_MS = 30_000;
 
 export function StakingConsole() {
   const { connection } = useConnection();
   const { connected, publicKey, sendTransaction } = useWallet();
+  const { shyftApiKey } = useRpcEndpoint();
 
   const [programInput, setProgramInput] = useState(NATIVE_STAKE_PROGRAM_ID);
   const [activeProgramId, setActiveProgramId] = useState(NATIVE_STAKE_PROGRAM_ID);
@@ -81,6 +111,7 @@ export function StakingConsole() {
   const [isLoadingStakes, setIsLoadingStakes] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [status, setStatus] = useState<StatusState>(null);
+  const [stakeSource, setStakeSource] = useState<"shyft" | "rpc" | "none">("none");
 
   const [stakeAmount, setStakeAmount] = useState("");
   const [voteAccount, setVoteAccount] = useState("");
@@ -95,6 +126,77 @@ export function StakingConsole() {
     [activeProgramId]
   );
 
+  const mapShyftStakeAccount = useCallback((account: ShyftStakeAccountShape) => {
+    const address =
+      account.stake_account ||
+      account.address ||
+      account.account ||
+      account.stake_pubkey ||
+      "";
+    if (!address) {
+      return null;
+    }
+
+    const rawBalance = account.lamports ?? account.balance ?? 0;
+    const rawDelegated =
+      account.delegated_lamports ?? account.delegated_stake ?? 0;
+
+    const toLamports = (value: number) =>
+      Number.isInteger(value) ? value : Math.round(value * LAMPORTS_PER_SOL);
+
+    return {
+      address,
+      lamports: toLamports(Number(rawBalance || 0)),
+      state: account.state || account.status || "unknown",
+      delegatedLamports: toLamports(Number(rawDelegated || 0)),
+      voter: account.voter || account.voter_address || account.vote_account || null,
+      staker: account.staker || account.authorized?.staker || null,
+      withdrawer: account.withdrawer || account.authorized?.withdrawer || null
+    } satisfies StakeAccountRow;
+  }, []);
+
+  const loadShyftStakeAccounts = useCallback(async () => {
+    if (!publicKey || !shyftApiKey) {
+      return null;
+    }
+
+    const pageSize = 100;
+    const maxPages = 5;
+    const rows: StakeAccountRow[] = [];
+
+    for (let page = 1; page <= maxPages; page += 1) {
+      const payload = await fetchShyft<unknown>(
+        shyftApiKey,
+        "/sol/v1/wallet/stake_accounts",
+        {
+          network: SHYFT_NETWORK,
+          wallet_address: publicKey.toBase58(),
+          page,
+          size: pageSize
+        }
+      );
+
+      const pageItems =
+        extractShyftResultArray<ShyftStakeAccountShape>(payload);
+      rows.push(
+        ...pageItems
+          .map((account) => mapShyftStakeAccount(account))
+          .filter((account): account is StakeAccountRow => Boolean(account))
+      );
+
+      if (pageItems.length < pageSize) {
+        break;
+      }
+    }
+
+    const deduped = new Map<string, StakeAccountRow>();
+    rows.forEach((row) => {
+      deduped.set(row.address, row);
+    });
+
+    return Array.from(deduped.values()).sort((a, b) => b.lamports - a.lamports);
+  }, [mapShyftStakeAccount, publicKey, shyftApiKey]);
+
   const loadNativeStakeAccounts = useCallback(async () => {
     if (!connected || !publicKey) {
       setStakeAccounts([]);
@@ -108,6 +210,20 @@ export function StakingConsole() {
     setIsLoadingStakes(true);
     setStatus(null);
     try {
+      if (shyftApiKey) {
+        try {
+          const shyftRows = await loadShyftStakeAccounts();
+          if (shyftRows) {
+            setStakeAccounts(shyftRows);
+            setStakeSource("shyft");
+            setIsLoadingStakes(false);
+            return;
+          }
+        } catch {
+          // Fall back to RPC discovery if Shyft fails.
+        }
+      }
+
       // Stake account layout offsets for authorized keys:
       // staker: 12, withdrawer: 44.
       const [asStaker, asWithdrawer] = await Promise.all([
@@ -180,6 +296,7 @@ export function StakingConsole() {
 
       nextRows.sort((a, b) => b.lamports - a.lamports);
       setStakeAccounts(nextRows);
+      setStakeSource("rpc");
     } catch (unknownError) {
       setStatus({
         severity: "error",
@@ -189,16 +306,40 @@ export function StakingConsole() {
             : "Unable to load stake accounts."
       });
       setStakeAccounts([]);
+      setStakeSource("none");
     } finally {
       setIsLoadingStakes(false);
     }
-  }, [connected, connection, isNativeProgram, publicKey]);
+  }, [
+    connected,
+    connection,
+    isNativeProgram,
+    loadShyftStakeAccounts,
+    publicKey,
+    shyftApiKey
+  ]);
 
   useEffect(() => {
     if (!connected || !publicKey || !isNativeProgram) {
       return;
     }
-    void loadNativeStakeAccounts();
+    let cancelled = false;
+
+    const run = async () => {
+      if (!cancelled) {
+        await loadNativeStakeAccounts();
+      }
+    };
+
+    void run();
+    const intervalId = window.setInterval(() => {
+      void run();
+    }, STAKE_REFRESH_INTERVAL_MS);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
   }, [connected, isNativeProgram, loadNativeStakeAccounts, publicKey]);
 
   const applyProgramId = () => {
@@ -467,16 +608,30 @@ export function StakingConsole() {
                 <Typography variant="subtitle2" color="primary.light">
                   My Stakes ({stakeAccounts.length})
                 </Typography>
-                <Button
-                  size="small"
-                  variant="outlined"
-                  onClick={() => {
-                    void loadNativeStakeAccounts();
-                  }}
-                  disabled={isLoadingStakes || !connected}
-                >
-                  {isLoadingStakes ? "Refreshing..." : "Refresh"}
-                </Button>
+                <Stack direction="row" spacing={0.8} alignItems="center">
+                  <Chip
+                    size="small"
+                    variant="outlined"
+                    color={stakeSource === "shyft" ? "primary" : "default"}
+                    label={
+                      stakeSource === "shyft"
+                        ? "Source: Shyft"
+                        : stakeSource === "rpc"
+                          ? "Source: RPC"
+                          : "Source: --"
+                    }
+                  />
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onClick={() => {
+                      void loadNativeStakeAccounts();
+                    }}
+                    disabled={isLoadingStakes || !connected}
+                  >
+                    {isLoadingStakes ? "Refreshing..." : "Refresh"}
+                  </Button>
+                </Stack>
               </Stack>
 
               {stakeAccounts.length === 0 ? (

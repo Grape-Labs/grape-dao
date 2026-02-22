@@ -17,6 +17,7 @@ import {
 import { WalletModalProvider } from "@solana/wallet-adapter-react-ui";
 import { PhantomWalletAdapter } from "@solana/wallet-adapter-phantom";
 import { SolflareWalletAdapter } from "@solana/wallet-adapter-solflare";
+import { extractShyftApiKeyFromRpcEndpoint } from "@/lib/shyft";
 
 type SolanaWalletProviderProps = {
   children: ReactNode;
@@ -35,6 +36,7 @@ type RpcProviderOption = {
 type RpcEndpointContextValue = {
   endpoint: string;
   defaultEndpoint: string;
+  shyftApiKey: string | null;
   options: RpcProviderOption[];
   setEndpoint: (nextEndpoint: string) => void;
   resetEndpoint: () => void;
@@ -105,6 +107,9 @@ export function SolanaWalletProvider({ children }: SolanaWalletProviderProps) {
     () => ({
       endpoint,
       defaultEndpoint: SHYFT_DEFAULT_RPC_ENDPOINT,
+      shyftApiKey:
+        extractShyftApiKeyFromRpcEndpoint(endpoint) ||
+        extractShyftApiKeyFromRpcEndpoint(SHYFT_DEFAULT_RPC_ENDPOINT),
       options: RPC_PROVIDER_OPTIONS,
       setEndpoint,
       resetEndpoint

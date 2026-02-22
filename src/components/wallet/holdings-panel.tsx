@@ -26,6 +26,12 @@ import {
 import type { WalletHoldingsState } from "@/hooks/use-wallet-holdings";
 import { useTokenMetadata } from "@/hooks/use-token-metadata";
 import type { TokenHolding } from "@/hooks/use-wallet-holdings";
+import { useRpcEndpoint } from "@/components/providers/solana-wallet-provider";
+import {
+  SHYFT_NETWORK,
+  extractShyftResultArray,
+  fetchShyft
+} from "@/lib/shyft";
 
 const TOKEN_METADATA_PROGRAM_ID = new PublicKey(MPL_TOKEN_METADATA_PROGRAM_ID);
 const METADATA_SEED = new TextEncoder().encode("metadata");
@@ -66,6 +72,32 @@ type MetaplexMetadata = {
   jsonExternalUrl: string | null;
   jsonCollection: string | null;
   jsonAttributes: MetadataJsonAttribute[];
+};
+
+type ShyftTokenItem = {
+  address?: string;
+  mint?: string;
+  info?: {
+    name?: string;
+    symbol?: string;
+    image?: string;
+  };
+  name?: string;
+  symbol?: string;
+  logo?: string;
+  image?: string;
+};
+
+type ShyftNftItem = {
+  mint?: string;
+  mint_address?: string;
+  address?: string;
+  name?: string;
+  symbol?: string;
+  image_uri?: string;
+  image?: string;
+  description?: string;
+  external_url?: string;
 };
 
 function formatTokenUnits(rawAmount: string, decimals: number) {
@@ -200,6 +232,7 @@ function parseMetadataAttributes(value: unknown): MetadataJsonAttribute[] {
 export function HoldingsPanel({ holdingsState }: HoldingsPanelProps) {
   const { connection } = useConnection();
   const { publicKey, connected } = useWallet();
+  const { shyftApiKey } = useRpcEndpoint();
   const { holdings, isLoading, error, refresh, updatedAt } = holdingsState;
   const { getTokenMetadata } = useTokenMetadata(
     holdings.tokens.map((token) => token.mint)
@@ -208,10 +241,15 @@ export function HoldingsPanel({ holdingsState }: HoldingsPanelProps) {
   const [mintDetails, setMintDetails] = useState<MintDetails | null>(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [detailsError, setDetailsError] = useState<string | null>(null);
+  const [selectedShyftNft, setSelectedShyftNft] = useState<ShyftNftItem | null>(null);
   const [metaplexMetadata, setMetaplexMetadata] =
     useState<MetaplexMetadata | null>(null);
   const [metaplexError, setMetaplexError] = useState<string | null>(null);
   const [holdingsTab, setHoldingsTab] = useState<"tokens" | "nfts">("tokens");
+  const [shyftTokens, setShyftTokens] = useState<ShyftTokenItem[]>([]);
+  const [shyftNfts, setShyftNfts] = useState<ShyftNftItem[]>([]);
+  const [shyftError, setShyftError] = useState<string | null>(null);
+  const [shyftLoading, setShyftLoading] = useState(false);
   const selectedTokenMetadata = selectedToken
     ? getTokenMetadata(selectedToken.mint)
     : null;
@@ -229,6 +267,30 @@ export function HoldingsPanel({ holdingsState }: HoldingsPanelProps) {
       ),
     [holdings.tokens]
   );
+  const shyftTokenMetadataByMint = useMemo(() => {
+    const map = new Map<
+      string,
+      { name?: string; symbol?: string; image?: string }
+    >();
+    shyftTokens.forEach((token) => {
+      const mint = token.address || token.mint;
+      if (!mint) {
+        return;
+      }
+      map.set(mint, {
+        name: token.info?.name || token.name,
+        symbol: token.info?.symbol || token.symbol,
+        image: token.info?.image || token.logo || token.image
+      });
+    });
+    return map;
+  }, [shyftTokens]);
+  const displayNfts = useMemo(() => {
+    if (shyftNfts.length > 0) {
+      return shyftNfts;
+    }
+    return [];
+  }, [shyftNfts]);
 
   const updatedAtLabel = useMemo(() => {
     if (!updatedAt) {
@@ -422,6 +484,62 @@ export function HoldingsPanel({ holdingsState }: HoldingsPanelProps) {
     };
   }, [connection, selectedToken]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadShyftWalletData() {
+      if (!connected || !publicKey || !shyftApiKey) {
+        setShyftTokens([]);
+        setShyftNfts([]);
+        setShyftError(null);
+        setShyftLoading(false);
+        return;
+      }
+
+      setShyftLoading(true);
+      setShyftError(null);
+      try {
+        const [tokensPayload, nftsPayload] = await Promise.all([
+          fetchShyft<unknown>(shyftApiKey, "/sol/v1/wallet/all_tokens", {
+            network: SHYFT_NETWORK,
+            wallet: publicKey.toBase58()
+          }),
+          fetchShyft<unknown>(shyftApiKey, "/sol/v1/nft/read_all", {
+            network: SHYFT_NETWORK,
+            address: publicKey.toBase58()
+          })
+        ]);
+
+        if (cancelled) {
+          return;
+        }
+
+        setShyftTokens(extractShyftResultArray<ShyftTokenItem>(tokensPayload));
+        setShyftNfts(extractShyftResultArray<ShyftNftItem>(nftsPayload));
+      } catch (unknownError) {
+        if (!cancelled) {
+          setShyftTokens([]);
+          setShyftNfts([]);
+          setShyftError(
+            unknownError instanceof Error
+              ? unknownError.message
+              : "Unable to load Shyft wallet data."
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setShyftLoading(false);
+        }
+      }
+    }
+
+    void loadShyftWalletData();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [connected, publicKey, shyftApiKey]);
+
   return (
     <Card className="fx-card" variant="outlined" sx={{ borderRadius: 1.75 }}>
       <CardContent sx={{ p: 1.75 }}>
@@ -461,6 +579,9 @@ export function HoldingsPanel({ holdingsState }: HoldingsPanelProps) {
               />
               <Chip variant="outlined" label={`Token Accounts: ${holdings.tokens.length}`} />
               <Chip variant="outlined" label={`NFT Candidates: ${potentialNfts.length}`} />
+              {shyftNfts.length > 0 ? (
+                <Chip variant="outlined" color="primary" label={`Shyft NFTs: ${shyftNfts.length}`} />
+              ) : null}
             </Stack>
 
             <Typography variant="caption" color="text.secondary" display="block" mt={1.2}>
@@ -471,6 +592,16 @@ export function HoldingsPanel({ holdingsState }: HoldingsPanelProps) {
               <Alert severity="error" sx={{ mt: 1.2 }}>
                 {error}
               </Alert>
+            ) : null}
+            {shyftError ? (
+              <Alert severity="warning" sx={{ mt: 1.2 }}>
+                Shyft data unavailable: {shyftError}
+              </Alert>
+            ) : null}
+            {shyftLoading ? (
+              <Typography variant="caption" color="text.secondary" display="block" mt={1}>
+                Loading Shyft wallet data...
+              </Typography>
             ) : null}
 
             <Box mt={1.4} sx={{ display: "grid", gap: 0.75 }}>
@@ -494,71 +625,130 @@ export function HoldingsPanel({ holdingsState }: HoldingsPanelProps) {
                     />
                     <Tab
                       value="nfts"
-                      label={`NFTs (${potentialNfts.length})`}
+                      label={`NFTs (${displayNfts.length || potentialNfts.length})`}
                     />
                   </Tabs>
 
                   {holdingsTab === "nfts" ? (
                     <>
-                      <Typography variant="caption" color="text.secondary">
-                        Heuristic: token accounts with amount = 1 and decimals = 0.
-                      </Typography>
-                      {potentialNfts.length === 0 ? (
+                      {displayNfts.length > 0 ? (
+                        <>
+                          <Typography variant="caption" color="text.secondary">
+                            Source: Shyft NFT API
+                          </Typography>
+                          {displayNfts.slice(0, 20).map((nft, index) => {
+                            const mint = nft.mint || nft.mint_address || nft.address || "";
+                            return (
+                              <Card
+                                key={`${mint}:${index}`}
+                                variant="outlined"
+                                onClick={() => {
+                                  setSelectedToken(null);
+                                  setSelectedShyftNft(nft);
+                                }}
+                                sx={{
+                                  borderRadius: 1.5,
+                                  cursor: "pointer",
+                                  transition: "border-color 160ms ease, transform 160ms ease",
+                                  "&:hover": {
+                                    borderColor: "primary.main",
+                                    transform: "translateY(-1px)"
+                                  }
+                                }}
+                              >
+                                <CardContent
+                                  sx={{
+                                    p: "10px !important",
+                                    display: "flex",
+                                    justifyContent: "space-between",
+                                    alignItems: "center",
+                                    gap: 1
+                                  }}
+                                >
+                                  <Box>
+                                    <Typography variant="body2">
+                                      {nft.name || shortenAddress(mint || `nft-${index}`)}
+                                    </Typography>
+                                    <Typography variant="caption" color="text.secondary">
+                                      Mint: {mint ? shortenAddress(mint) : "Unknown"}
+                                    </Typography>
+                                    <Typography
+                                      variant="caption"
+                                      color="primary.light"
+                                      display="block"
+                                      sx={{ mt: 0.3 }}
+                                    >
+                                      Click for NFT details
+                                    </Typography>
+                                  </Box>
+                                  <Chip size="small" variant="outlined" label="NFT" />
+                                </CardContent>
+                              </Card>
+                            );
+                          })}
+                        </>
+                      ) : potentialNfts.length === 0 ? (
                         <Typography color="text.secondary" variant="body2">
                           No NFT candidates detected in SPL token accounts.
                         </Typography>
                       ) : (
-                        potentialNfts.slice(0, 20).map((token) => {
-                          const tokenMetadata = getTokenMetadata(token.mint);
-                          return (
-                            <Card
-                              key={token.account}
-                              variant="outlined"
-                              onClick={() => {
-                                setSelectedToken(token);
-                              }}
-                              sx={{
-                                borderRadius: 1.5,
-                                cursor: "pointer",
-                                transition: "border-color 160ms ease, transform 160ms ease",
-                                "&:hover": {
-                                  borderColor: "primary.main",
-                                  transform: "translateY(-1px)"
-                                }
-                              }}
-                            >
-                              <CardContent
+                        <>
+                          <Typography variant="caption" color="text.secondary">
+                            Heuristic: token accounts with amount = 1 and decimals = 0.
+                          </Typography>
+                          {potentialNfts.slice(0, 20).map((token) => {
+                            const tokenMetadata = getTokenMetadata(token.mint);
+                            return (
+                              <Card
+                                key={token.account}
+                                variant="outlined"
+                                onClick={() => {
+                                  setSelectedShyftNft(null);
+                                  setSelectedToken(token);
+                                }}
                                 sx={{
-                                  p: "10px !important",
-                                  display: "flex",
-                                  justifyContent: "space-between",
-                                  alignItems: "center",
-                                  gap: 1
+                                  borderRadius: 1.5,
+                                  cursor: "pointer",
+                                  transition: "border-color 160ms ease, transform 160ms ease",
+                                  "&:hover": {
+                                    borderColor: "primary.main",
+                                    transform: "translateY(-1px)"
+                                  }
                                 }}
                               >
-                                <Box>
-                                  <Typography variant="body2">
-                                    {tokenMetadata?.name ||
-                                      tokenMetadata?.symbol ||
-                                      shortenAddress(token.mint)}
-                                  </Typography>
-                                  <Typography variant="caption" color="text.secondary">
-                                    Mint: {shortenAddress(token.mint)}
-                                  </Typography>
-                                  <Typography
-                                    variant="caption"
-                                    color="primary.light"
-                                    display="block"
-                                    sx={{ mt: 0.3 }}
-                                  >
-                                    Click for NFT details
-                                  </Typography>
-                                </Box>
-                                <Chip size="small" variant="outlined" label="NFT Candidate" />
-                              </CardContent>
-                            </Card>
-                          );
-                        })
+                                <CardContent
+                                  sx={{
+                                    p: "10px !important",
+                                    display: "flex",
+                                    justifyContent: "space-between",
+                                    alignItems: "center",
+                                    gap: 1
+                                  }}
+                                >
+                                  <Box>
+                                    <Typography variant="body2">
+                                      {tokenMetadata?.name ||
+                                        tokenMetadata?.symbol ||
+                                        shortenAddress(token.mint)}
+                                    </Typography>
+                                    <Typography variant="caption" color="text.secondary">
+                                      Mint: {shortenAddress(token.mint)}
+                                    </Typography>
+                                    <Typography
+                                      variant="caption"
+                                      color="primary.light"
+                                      display="block"
+                                      sx={{ mt: 0.3 }}
+                                    >
+                                      Click for NFT details
+                                    </Typography>
+                                  </Box>
+                                  <Chip size="small" variant="outlined" label="NFT Candidate" />
+                                </CardContent>
+                              </Card>
+                            );
+                          })}
+                        </>
                       )}
                     </>
                   ) : fungibleTokens.length === 0 ? (
@@ -568,11 +758,13 @@ export function HoldingsPanel({ holdingsState }: HoldingsPanelProps) {
                   ) : (
                     fungibleTokens.slice(0, 20).map((token) => {
                       const tokenMetadata = getTokenMetadata(token.mint);
+                      const shyftTokenMetadata = shyftTokenMetadataByMint.get(token.mint);
                       return (
                         <Card
                           key={token.account}
                           variant="outlined"
                           onClick={() => {
+                            setSelectedShyftNft(null);
                             setSelectedToken(token);
                           }}
                           sx={{
@@ -596,10 +788,16 @@ export function HoldingsPanel({ holdingsState }: HoldingsPanelProps) {
                           >
                             <Box>
                               <Typography variant="body2">
-                                {tokenMetadata?.symbol || shortenAddress(token.mint)}
+                                {tokenMetadata?.symbol ||
+                                  shyftTokenMetadata?.symbol ||
+                                  shortenAddress(token.mint)}
                               </Typography>
                               <Typography variant="caption" color="text.secondary">
-                                {tokenMetadata?.name ? `${tokenMetadata.name} | ` : ""}
+                                {tokenMetadata?.name
+                                  ? `${tokenMetadata.name} | `
+                                  : shyftTokenMetadata?.name
+                                    ? `${shyftTokenMetadata.name} | `
+                                    : ""}
                                 ATA: {shortenAddress(token.account)}
                               </Typography>
                               <Typography
@@ -628,16 +826,83 @@ export function HoldingsPanel({ holdingsState }: HoldingsPanelProps) {
         )}
       </CardContent>
       <Dialog
-        open={Boolean(selectedToken)}
+        open={Boolean(selectedToken) || Boolean(selectedShyftNft)}
         onClose={() => {
           setSelectedToken(null);
+          setSelectedShyftNft(null);
         }}
         fullWidth
         maxWidth="sm"
       >
-        <DialogTitle>Token Details</DialogTitle>
+        <DialogTitle>{selectedShyftNft ? "NFT Details" : "Token Details"}</DialogTitle>
         <DialogContent dividers>
-          {selectedToken ? (
+          {selectedShyftNft ? (
+            <Stack spacing={1.35}>
+              {selectedShyftNft.image_uri || selectedShyftNft.image ? (
+                <Box
+                  component="img"
+                  src={selectedShyftNft.image_uri || selectedShyftNft.image}
+                  alt={selectedShyftNft.name || "NFT image"}
+                  sx={{
+                    width: 80,
+                    height: 80,
+                    borderRadius: 1.1,
+                    border: "1px solid",
+                    borderColor: "divider",
+                    objectFit: "cover"
+                  }}
+                />
+              ) : null}
+              <Typography variant="subtitle1">
+                {selectedShyftNft.name || "Unknown NFT"}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                {selectedShyftNft.symbol || "NFT"}
+              </Typography>
+              <Typography
+                variant="body2"
+                sx={{ wordBreak: "break-all", fontFamily: "var(--font-mono), monospace" }}
+              >
+                {selectedShyftNft.mint ||
+                  selectedShyftNft.mint_address ||
+                  selectedShyftNft.address ||
+                  "Unknown Mint"}
+              </Typography>
+              {(selectedShyftNft.mint ||
+                selectedShyftNft.mint_address ||
+                selectedShyftNft.address) ? (
+                <Link
+                  href={formatMintAddressLink(
+                    selectedShyftNft.mint ||
+                      selectedShyftNft.mint_address ||
+                      selectedShyftNft.address ||
+                      ""
+                  )}
+                  target="_blank"
+                  rel="noreferrer"
+                  underline="hover"
+                >
+                  Mint on Explorer
+                </Link>
+              ) : null}
+              {selectedShyftNft.description ? (
+                <Typography variant="body2" color="text.secondary">
+                  {selectedShyftNft.description}
+                </Typography>
+              ) : null}
+              {selectedShyftNft.external_url ? (
+                <Link
+                  href={selectedShyftNft.external_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  underline="hover"
+                  sx={{ wordBreak: "break-all" }}
+                >
+                  {selectedShyftNft.external_url}
+                </Link>
+              ) : null}
+            </Stack>
+          ) : selectedToken ? (
             <Stack spacing={1.35}>
               {selectedTokenMetadata?.logoURI ? (
                 <Box
@@ -921,6 +1186,7 @@ export function HoldingsPanel({ holdingsState }: HoldingsPanelProps) {
           <Button
             onClick={() => {
               setSelectedToken(null);
+              setSelectedShyftNft(null);
             }}
           >
             Close

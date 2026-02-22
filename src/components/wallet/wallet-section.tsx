@@ -21,6 +21,7 @@ import { IdentityActions } from "@/components/wallet/identity-actions";
 import { HoldingsPanel } from "@/components/wallet/holdings-panel";
 import { RentRecoverySweeper } from "@/components/wallet/rent-recovery-sweeper";
 import { StakingConsole } from "@/components/wallet/staking-console";
+import { TokenAuthorityManager } from "@/components/wallet/token-authority-manager";
 import { useRpcEndpoint } from "@/components/providers/solana-wallet-provider";
 import { useWalletHoldings } from "@/hooks/use-wallet-holdings";
 
@@ -186,6 +187,7 @@ export function WalletSection() {
               </Stack>
 
               <IdentityActions holdingsState={holdingsState} />
+              <TokenAuthorityManager holdingsState={holdingsState} />
               <StakingConsole />
               <DelegateManager holdingsState={holdingsState} />
               <RentRecoverySweeper holdingsState={holdingsState} />
