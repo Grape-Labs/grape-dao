@@ -255,7 +255,7 @@ export default function Home() {
                       </Typography>
                     </Stack>
                     <Typography color="text.secondary">{product.description}</Typography>
-                    <Box>
+                    <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
                       <Button
                         variant="contained"
                         color="primary"
@@ -265,7 +265,18 @@ export default function Home() {
                       >
                         {product.ctaLabel}
                       </Button>
-                    </Box>
+                      {product.sdkHref ? (
+                        <Button
+                          variant="outlined"
+                          color="secondary"
+                          href={product.sdkHref}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          SDK / NPM
+                        </Button>
+                      ) : null}
+                    </Stack>
                   </Stack>
                 </CardContent>
               </Card>
