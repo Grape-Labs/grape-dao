@@ -4,8 +4,13 @@ import type { NextRequest } from "next/server";
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Normalize only /identity path casing to avoid redirect loops.
-  if (/^\/identity(\/|$)/i.test(pathname) && pathname !== pathname.toLowerCase()) {
+  // Normalize known app routes casing to avoid route mismatches.
+  const shouldNormalize =
+    /^\/identity(\/|$)/i.test(pathname) ||
+    /^\/token(\/|$)/i.test(pathname) ||
+    /^\/tokentools(\/|$)/i.test(pathname);
+
+  if (shouldNormalize && pathname !== pathname.toLowerCase()) {
     const normalizedUrl = request.nextUrl.clone();
     normalizedUrl.pathname = pathname.toLowerCase();
     return NextResponse.redirect(normalizedUrl);

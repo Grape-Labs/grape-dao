@@ -25,6 +25,7 @@ import {
 } from "@solana/web3.js";
 import {
   MPL_TOKEN_METADATA_PROGRAM_ID,
+  getMetadataAccountDataSerializer,
   getCreateMetadataAccountV3InstructionDataSerializer,
   getUpdateMetadataAccountV2InstructionDataSerializer
 } from "@metaplex-foundation/mpl-token-metadata";
@@ -45,6 +46,11 @@ import type { WalletHoldingsState } from "@/hooks/use-wallet-holdings";
 
 type TokenAuthorityManagerProps = {
   holdingsState: WalletHoldingsState;
+};
+
+type DistributionRecipient = {
+  owner: PublicKey;
+  amountBaseUnits: bigint;
 };
 
 type StatusState = {
@@ -78,6 +84,42 @@ function parseAmountToBaseUnits(input: string, decimals: number): bigint {
   const paddedFraction = fractionPartRaw.padEnd(decimals, "0");
   const combined = `${wholePart}${paddedFraction}`.replace(/^0+/, "") || "0";
   return BigInt(combined);
+}
+
+function parseDistributionRecipients(
+  input: string,
+  decimals: number
+): DistributionRecipient[] {
+  const recipients: DistributionRecipient[] = [];
+  const lines = input
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && !line.startsWith("#"));
+
+  if (lines.length === 0) {
+    throw new Error("Add at least one recipient line.");
+  }
+
+  lines.forEach((line, index) => {
+    const parts = line.includes(",")
+      ? line.split(",").map((value) => value.trim())
+      : line.split(/\s+/).map((value) => value.trim());
+    if (parts.length < 2 || !parts[0] || !parts[1]) {
+      throw new Error(
+        `Invalid recipient format on line ${index + 1}. Use wallet,amount.`
+      );
+    }
+
+    const owner = new PublicKey(parts[0]);
+    const amountBaseUnits = parseAmountToBaseUnits(parts[1], decimals);
+    if (amountBaseUnits <= 0n) {
+      throw new Error(`Amount must be greater than zero on line ${index + 1}.`);
+    }
+
+    recipients.push({ owner, amountBaseUnits });
+  });
+
+  return recipients;
 }
 
 function shortenAddress(address: string) {
@@ -114,6 +156,8 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
   const [mintAddress, setMintAddress] = useState("");
   const [mintDestinationOwner, setMintDestinationOwner] = useState("");
   const [mintAmount, setMintAmount] = useState("");
+  const [distributionMintAddress, setDistributionMintAddress] = useState("");
+  const [distributionRecipients, setDistributionRecipients] = useState("");
 
   const [authorityMint, setAuthorityMint] = useState("");
   const [authorityType, setAuthorityType] = useState<"mint" | "freeze">("mint");
@@ -129,6 +173,8 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
 
   const [metadataAuthorityMint, setMetadataAuthorityMint] = useState("");
   const [metadataNewUpdateAuthority, setMetadataNewUpdateAuthority] = useState("");
+  const [metadataUriOnlyMint, setMetadataUriOnlyMint] = useState("");
+  const [metadataUriOnlyValue, setMetadataUriOnlyValue] = useState("");
 
   const activeTokenProgramPublicKey = useMemo(
     () => new PublicKey(tokenProgramId),
@@ -215,6 +261,7 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
       const mintBase58 = mintKeypair.publicKey.toBase58();
       setCreatedMint(mintBase58);
       setMintAddress((current) => current || mintBase58);
+      setDistributionMintAddress((current) => current || mintBase58);
       setAuthorityMint((current) => current || mintBase58);
       setMetadataMint((current) => current || mintBase58);
       setStatus({
@@ -368,6 +415,96 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
     }
   };
 
+  const distributeMintTokens = async () => {
+    if (!publicKey) {
+      setStatus({ severity: "error", message: "Connect your wallet first." });
+      return;
+    }
+
+    setIsSubmitting(true);
+    setStatus(null);
+    try {
+      const mintPublicKey = new PublicKey(
+        (distributionMintAddress.trim() || mintAddress.trim()).trim()
+      );
+      const mintInfo = await connection.getParsedAccountInfo(
+        mintPublicKey,
+        "confirmed"
+      );
+      if (!mintInfo.value || typeof mintInfo.value.data !== "object") {
+        throw new Error("Unable to read mint account.");
+      }
+      const parsedData = mintInfo.value.data as ParsedAccountData;
+      const decimals = Number(parsedData.parsed.info.decimals ?? 0);
+      const recipients = parseDistributionRecipients(distributionRecipients, decimals);
+      const maxRecipientsPerTransaction = 7;
+      const signatures: string[] = [];
+
+      for (let i = 0; i < recipients.length; i += maxRecipientsPerTransaction) {
+        const chunk = recipients.slice(i, i + maxRecipientsPerTransaction);
+        const destinationAtas = chunk.map((recipient) =>
+          getAssociatedTokenAddressSync(
+            mintPublicKey,
+            recipient.owner,
+            false,
+            activeTokenProgramPublicKey,
+            ASSOCIATED_TOKEN_PROGRAM_ID
+          )
+        );
+        const destinationAtaInfos = await connection.getMultipleAccountsInfo(
+          destinationAtas,
+          "confirmed"
+        );
+
+        const transaction = new Transaction();
+        chunk.forEach((recipient, index) => {
+          const destinationAta = destinationAtas[index];
+          if (!destinationAtaInfos[index]) {
+            transaction.add(
+              createAssociatedTokenAccountInstruction(
+                publicKey,
+                destinationAta,
+                recipient.owner,
+                mintPublicKey,
+                activeTokenProgramPublicKey,
+                ASSOCIATED_TOKEN_PROGRAM_ID
+              )
+            );
+          }
+          transaction.add(
+            createMintToInstruction(
+              mintPublicKey,
+              destinationAta,
+              publicKey,
+              recipient.amountBaseUnits,
+              [],
+              activeTokenProgramPublicKey
+            )
+          );
+        });
+
+        const signature = await runWalletTransaction(transaction);
+        signatures.push(signature);
+      }
+
+      setStatus({
+        severity: "success",
+        message: `Distributed mint to ${recipients.length} wallet(s) across ${signatures.length} transaction(s).`,
+        signature: signatures[0]
+      });
+    } catch (unknownError) {
+      setStatus({
+        severity: "error",
+        message:
+          unknownError instanceof Error
+            ? unknownError.message
+            : "Failed to mint and distribute tokens."
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const createMetadata = async () => {
     if (!publicKey) {
       setStatus({ severity: "error", message: "Connect your wallet first." });
@@ -488,6 +625,80 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
           unknownError instanceof Error
             ? unknownError.message
             : "Failed to update metadata authority."
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const updateMetadataUriOnly = async () => {
+    if (!publicKey) {
+      setStatus({ severity: "error", message: "Connect your wallet first." });
+      return;
+    }
+
+    setIsSubmitting(true);
+    setStatus(null);
+    try {
+      const mintPublicKey = new PublicKey(metadataUriOnlyMint.trim());
+      const nextUri = metadataUriOnlyValue.trim();
+      if (!nextUri) {
+        throw new Error("New metadata URI is required.");
+      }
+
+      const metadataPda = findMetadataPda(mintPublicKey);
+      const metadataAccountInfo = await connection.getAccountInfo(
+        metadataPda,
+        "confirmed"
+      );
+      if (!metadataAccountInfo) {
+        throw new Error("Metadata account not found for this mint.");
+      }
+
+      const [currentMetadata] = getMetadataAccountDataSerializer().deserialize(
+        metadataAccountInfo.data
+      );
+
+      const data =
+        getUpdateMetadataAccountV2InstructionDataSerializer().serialize({
+          data: {
+            name: currentMetadata.name,
+            symbol: currentMetadata.symbol,
+            uri: nextUri,
+            sellerFeeBasisPoints: currentMetadata.sellerFeeBasisPoints,
+            creators: currentMetadata.creators,
+            collection: currentMetadata.collection,
+            uses: currentMetadata.uses
+          },
+          newUpdateAuthority: null,
+          primarySaleHappened: null,
+          isMutable: null
+        });
+
+      const instruction = new TransactionInstruction({
+        programId: TOKEN_METADATA_PROGRAM_ID,
+        keys: [
+          { pubkey: metadataPda, isSigner: false, isWritable: true },
+          { pubkey: publicKey, isSigner: true, isWritable: false }
+        ],
+        data: Buffer.from(data)
+      });
+
+      const signature = await runWalletTransaction(
+        new Transaction().add(instruction)
+      );
+      setStatus({
+        severity: "success",
+        message: "Metadata URI updated.",
+        signature
+      });
+    } catch (unknownError) {
+      setStatus({
+        severity: "error",
+        message:
+          unknownError instanceof Error
+            ? unknownError.message
+            : "Failed to update metadata URI."
       });
     } finally {
       setIsSubmitting(false);
@@ -680,6 +891,46 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
           <Card variant="outlined" sx={{ borderRadius: 1.5 }}>
             <CardContent sx={{ p: 1.2 }}>
               <Stack spacing={1}>
+                <Typography variant="subtitle2">Mint + Distribute (Batch)</Typography>
+                <Typography variant="caption" color="text.secondary">
+                  One recipient per line: wallet,amount
+                </Typography>
+                <TextField
+                  size="small"
+                  label="Mint Address"
+                  value={distributionMintAddress}
+                  onChange={(event) => {
+                    setDistributionMintAddress(event.target.value);
+                  }}
+                  placeholder={mintAddress || ""}
+                />
+                <TextField
+                  multiline
+                  minRows={6}
+                  size="small"
+                  label="Recipients"
+                  value={distributionRecipients}
+                  onChange={(event) => {
+                    setDistributionRecipients(event.target.value);
+                  }}
+                  placeholder={`WalletAddress1,100\nWalletAddress2,250.5`}
+                />
+                <Button
+                  variant="outlined"
+                  onClick={() => {
+                    void distributeMintTokens();
+                  }}
+                  disabled={!connected || isSubmitting}
+                >
+                  Mint + Distribute
+                </Button>
+              </Stack>
+            </CardContent>
+          </Card>
+
+          <Card variant="outlined" sx={{ borderRadius: 1.5 }}>
+            <CardContent sx={{ p: 1.2 }}>
+              <Stack spacing={1}>
                 <Typography variant="subtitle2">Update Mint/Freeze Authority</Typography>
                 <TextField
                   size="small"
@@ -832,6 +1083,42 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
                   disabled={!connected || isSubmitting}
                 >
                   Update Metadata Authority
+                </Button>
+              </Stack>
+            </CardContent>
+          </Card>
+
+          <Card variant="outlined" sx={{ borderRadius: 1.5 }}>
+            <CardContent sx={{ p: 1.2 }}>
+              <Stack spacing={1}>
+                <Typography variant="subtitle2">Update Metadata URI Only</Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Preserves existing metadata fields and replaces only the URI.
+                </Typography>
+                <TextField
+                  size="small"
+                  label="Mint Address"
+                  value={metadataUriOnlyMint}
+                  onChange={(event) => {
+                    setMetadataUriOnlyMint(event.target.value);
+                  }}
+                />
+                <TextField
+                  size="small"
+                  label="New Metadata URI"
+                  value={metadataUriOnlyValue}
+                  onChange={(event) => {
+                    setMetadataUriOnlyValue(event.target.value);
+                  }}
+                />
+                <Button
+                  variant="outlined"
+                  onClick={() => {
+                    void updateMetadataUriOnly();
+                  }}
+                  disabled={!connected || isSubmitting}
+                >
+                  Update URI
                 </Button>
               </Stack>
             </CardContent>

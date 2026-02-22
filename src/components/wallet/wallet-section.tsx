@@ -3,6 +3,9 @@
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import {
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
   Box,
   Button,
   Card,
@@ -21,7 +24,6 @@ import { IdentityActions } from "@/components/wallet/identity-actions";
 import { HoldingsPanel } from "@/components/wallet/holdings-panel";
 import { RentRecoverySweeper } from "@/components/wallet/rent-recovery-sweeper";
 import { StakingConsole } from "@/components/wallet/staking-console";
-import { TokenAuthorityManager } from "@/components/wallet/token-authority-manager";
 import { useRpcEndpoint } from "@/components/providers/solana-wallet-provider";
 import { useWalletHoldings } from "@/hooks/use-wallet-holdings";
 
@@ -38,6 +40,7 @@ export function WalletSection() {
 
   const [selectedRpc, setSelectedRpc] = useState(endpoint);
   const [customRpc, setCustomRpc] = useState(endpoint);
+  const [expandedTool, setExpandedTool] = useState<string | false>("transact");
   const isUsingShyftDefault = endpoint === defaultEndpoint;
 
   const walletLabel = publicKey ? shortenAddress(publicKey.toBase58()) : "Connect Identity";
@@ -80,6 +83,11 @@ export function WalletSection() {
                   Transaction tools for SOL and SPL operations, plus RPC routing
                   and account lifecycle controls.
                 </Typography>
+                <Box mt={1.1}>
+                  <Button variant="outlined" size="small" href="/token">
+                    Open Token Tools
+                  </Button>
+                </Box>
               </Box>
 
               <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ sm: "center" }}>
@@ -186,11 +194,77 @@ export function WalletSection() {
                 ) : null}
               </Stack>
 
-              <IdentityActions holdingsState={holdingsState} />
-              <TokenAuthorityManager holdingsState={holdingsState} />
-              <StakingConsole />
-              <DelegateManager holdingsState={holdingsState} />
-              <RentRecoverySweeper holdingsState={holdingsState} />
+              <Accordion
+                expanded={expandedTool === "transact"}
+                onChange={(_event, isExpanded) => {
+                  setExpandedTool(isExpanded ? "transact" : false);
+                }}
+                disableGutters
+                sx={{ bgcolor: "transparent", border: "1px solid", borderColor: "divider", borderRadius: "8px !important" }}
+              >
+                <AccordionSummary
+                  expandIcon={<Typography color="text.secondary">{expandedTool === "transact" ? "−" : "+"}</Typography>}
+                >
+                  <Typography variant="subtitle2">Transact + Simulation</Typography>
+                </AccordionSummary>
+                <AccordionDetails sx={{ pt: 0.5 }}>
+                  <IdentityActions holdingsState={holdingsState} />
+                </AccordionDetails>
+              </Accordion>
+
+              <Accordion
+                expanded={expandedTool === "staking"}
+                onChange={(_event, isExpanded) => {
+                  setExpandedTool(isExpanded ? "staking" : false);
+                }}
+                disableGutters
+                sx={{ bgcolor: "transparent", border: "1px solid", borderColor: "divider", borderRadius: "8px !important" }}
+              >
+                <AccordionSummary
+                  expandIcon={<Typography color="text.secondary">{expandedTool === "staking" ? "−" : "+"}</Typography>}
+                >
+                  <Typography variant="subtitle2">Staking</Typography>
+                </AccordionSummary>
+                <AccordionDetails sx={{ pt: 0.5 }}>
+                  <StakingConsole />
+                </AccordionDetails>
+              </Accordion>
+
+              <Accordion
+                expanded={expandedTool === "approvals"}
+                onChange={(_event, isExpanded) => {
+                  setExpandedTool(isExpanded ? "approvals" : false);
+                }}
+                disableGutters
+                sx={{ bgcolor: "transparent", border: "1px solid", borderColor: "divider", borderRadius: "8px !important" }}
+              >
+                <AccordionSummary
+                  expandIcon={<Typography color="text.secondary">{expandedTool === "approvals" ? "−" : "+"}</Typography>}
+                >
+                  <Typography variant="subtitle2">Approval / Delegate Manager</Typography>
+                </AccordionSummary>
+                <AccordionDetails sx={{ pt: 0.5 }}>
+                  <DelegateManager holdingsState={holdingsState} />
+                </AccordionDetails>
+              </Accordion>
+
+              <Accordion
+                expanded={expandedTool === "recovery"}
+                onChange={(_event, isExpanded) => {
+                  setExpandedTool(isExpanded ? "recovery" : false);
+                }}
+                disableGutters
+                sx={{ bgcolor: "transparent", border: "1px solid", borderColor: "divider", borderRadius: "8px !important" }}
+              >
+                <AccordionSummary
+                  expandIcon={<Typography color="text.secondary">{expandedTool === "recovery" ? "−" : "+"}</Typography>}
+                >
+                  <Typography variant="subtitle2">Rent Recovery Sweeper</Typography>
+                </AccordionSummary>
+                <AccordionDetails sx={{ pt: 0.5 }}>
+                  <RentRecoverySweeper holdingsState={holdingsState} />
+                </AccordionDetails>
+              </Accordion>
             </Stack>
           </Grid>
 

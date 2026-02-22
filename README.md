@@ -1,7 +1,7 @@
 # Grape Hub UI
 
 Frontend for `grape.art` built with Next.js + Material UI.  
-This UI combines a product landing experience with a dedicated operational Identity page.
+This UI combines a product landing experience with dedicated operational pages for Identity and Token Tools.
 
 ## Stack
 
@@ -43,9 +43,23 @@ Route: `/identity`
   - Shyft URL is intentionally hidden in visible UI state
 - Workspace tabs:
   - `Transact`
+  - `Staking`
   - `Approvals`
   - `Recovery`
   - `Holdings`
+
+### Token Tools
+
+Route: `/token` (`/tokentools` redirects to `/token`)
+
+- Dedicated token authority workspace
+- Create mint
+- Mint supply to destination owner ATA
+- Batch mint and distribute to many wallets from recipient list input
+- Update mint/freeze authority
+- Create metadata account
+- Update metadata authority
+- Update metadata URI only
 
 ## Wallet Tools
 
@@ -95,11 +109,14 @@ Before execution, users can simulate and inspect:
 
 - `src/app/page.tsx`: landing page and top-level sections
 - `src/app/identity/page.tsx`: dedicated Identity route for Wallet Console
+- `src/app/token/page.tsx`: dedicated Token Tools route
 - `src/components/providers/mui-theme-provider.tsx`: theme + global motion styles
 - `src/components/providers/solana-wallet-provider.tsx`: Solana connection and RPC context
 - `src/components/solana/live-signals-panel.tsx`: live network telemetry
 - `src/components/wallet/wallet-section.tsx`: Wallet Console shell + navigation
+- `src/components/wallet/token-tools-section.tsx`: token tools shell + holdings layout
 - `src/components/wallet/identity-actions.tsx`: transact + simulator/decoder
+- `src/components/wallet/token-authority-manager.tsx`: token authority and metadata operations
 - `src/components/wallet/delegate-manager.tsx`: approvals/revoke tooling
 - `src/components/wallet/rent-recovery-sweeper.tsx`: rent reclaim tooling
 - `src/components/wallet/holdings-panel.tsx`: holdings UI

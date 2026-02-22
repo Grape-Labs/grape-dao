@@ -73,6 +73,9 @@ export default function NotFound() {
               <Button variant="outlined" color="primary" href="/identity">
                 Open Identity
               </Button>
+              <Button variant="outlined" color="primary" href="/token">
+                Open Token Tools
+              </Button>
               <Button
                 variant="outlined"
                 color="secondary"

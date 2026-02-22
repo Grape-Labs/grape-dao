@@ -176,6 +176,9 @@ export default function Home() {
                   <Button variant="outlined" color="primary" href="/identity">
                     Identity
                   </Button>
+                  <Button variant="outlined" color="primary" href="/token">
+                    Token Tools
+                  </Button>
                 </Stack>
                 <Stack direction={{ xs: "column", md: "row" }} spacing={1}>
                   <Chip label="Programs: 4" variant="outlined" color="secondary" />
