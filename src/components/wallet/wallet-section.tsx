@@ -16,8 +16,10 @@ import {
   Typography
 } from "@mui/material";
 import { useEffect, useMemo, useState } from "react";
+import { DelegateManager } from "@/components/wallet/delegate-manager";
 import { IdentityActions } from "@/components/wallet/identity-actions";
 import { HoldingsPanel } from "@/components/wallet/holdings-panel";
+import { RentRecoverySweeper } from "@/components/wallet/rent-recovery-sweeper";
 import { useRpcEndpoint } from "@/components/providers/solana-wallet-provider";
 import { useWalletHoldings } from "@/hooks/use-wallet-holdings";
 
@@ -34,6 +36,7 @@ export function WalletSection() {
 
   const [selectedRpc, setSelectedRpc] = useState(endpoint);
   const [customRpc, setCustomRpc] = useState(endpoint);
+  const isUsingShyftDefault = endpoint === defaultEndpoint;
 
   const walletLabel = publicKey ? shortenAddress(publicKey.toBase58()) : "Connect Identity";
   const isUsingPresetRpc = useMemo(
@@ -46,8 +49,8 @@ export function WalletSection() {
   useEffect(() => {
     const preset = options.find((option) => option.value === endpoint);
     setSelectedRpc(preset ? preset.value : "custom");
-    setCustomRpc(endpoint);
-  }, [endpoint, options]);
+    setCustomRpc(endpoint === defaultEndpoint ? "" : endpoint);
+  }, [defaultEndpoint, endpoint, options]);
 
   return (
     <Card
@@ -134,25 +137,28 @@ export function WalletSection() {
                     ))}
                     <MenuItem value="custom">Custom RPC URL</MenuItem>
                   </TextField>
-                  <TextField
-                    size="small"
-                    label="Custom RPC URL"
-                    value={customRpc}
-                    onChange={(event) => {
-                      setCustomRpc(event.target.value);
-                    }}
-                    disabled={selectedRpc !== "custom"}
-                    fullWidth
-                  />
-                  <Button
-                    variant="outlined"
-                    onClick={() => {
-                      setEndpoint(customRpc);
-                    }}
-                    disabled={selectedRpc !== "custom" || !canApplyCustomRpc}
-                  >
-                    Apply
-                  </Button>
+                  {selectedRpc === "custom" ? (
+                    <>
+                      <TextField
+                        size="small"
+                        label="Custom RPC URL"
+                        value={customRpc}
+                        onChange={(event) => {
+                          setCustomRpc(event.target.value);
+                        }}
+                        fullWidth
+                      />
+                      <Button
+                        variant="outlined"
+                        onClick={() => {
+                          setEndpoint(customRpc);
+                        }}
+                        disabled={!canApplyCustomRpc}
+                      >
+                        Apply
+                      </Button>
+                    </>
+                  ) : null}
                   <Button
                     variant="text"
                     onClick={resetEndpoint}
@@ -162,21 +168,25 @@ export function WalletSection() {
                     Reset
                   </Button>
                 </Stack>
-                <Typography
-                  variant="caption"
-                  color="text.secondary"
-                  sx={{
-                    display: "block",
-                    wordBreak: "break-all",
-                    fontFamily: "var(--font-mono), monospace"
-                  }}
-                >
-                  Active RPC: {endpoint}
-                  {isUsingPresetRpc ? "" : " (custom)"}
-                </Typography>
+                {!isUsingShyftDefault ? (
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    sx={{
+                      display: "block",
+                      wordBreak: "break-all",
+                      fontFamily: "var(--font-mono), monospace"
+                    }}
+                  >
+                    Active RPC: {endpoint}
+                    {isUsingPresetRpc ? "" : " (custom)"}
+                  </Typography>
+                ) : null}
               </Stack>
 
               <IdentityActions holdingsState={holdingsState} />
+              <DelegateManager holdingsState={holdingsState} />
+              <RentRecoverySweeper holdingsState={holdingsState} />
             </Stack>
           </Grid>
 

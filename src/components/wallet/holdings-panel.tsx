@@ -14,6 +14,7 @@ import {
   Typography
 } from "@mui/material";
 import type { WalletHoldingsState } from "@/hooks/use-wallet-holdings";
+import { useTokenMetadata } from "@/hooks/use-token-metadata";
 
 function shortenAddress(address: string) {
   return `${address.slice(0, 6)}...${address.slice(-6)}`;
@@ -26,6 +27,9 @@ type HoldingsPanelProps = {
 export function HoldingsPanel({ holdingsState }: HoldingsPanelProps) {
   const { publicKey, connected } = useWallet();
   const { holdings, isLoading, error, refresh, updatedAt } = holdingsState;
+  const { getTokenMetadata } = useTokenMetadata(
+    holdings.tokens.map((token) => token.mint)
+  );
 
   const updatedAtLabel = useMemo(() => {
     if (!updatedAt) {
@@ -94,31 +98,35 @@ export function HoldingsPanel({ holdingsState }: HoldingsPanelProps) {
                   No non-zero SPL token balances found.
                 </Typography>
               ) : (
-                holdings.tokens.slice(0, 20).map((token) => (
-                  <Card key={token.account} variant="outlined" sx={{ borderRadius: 1.5 }}>
-                    <CardContent
-                      sx={{
-                        p: "10px !important",
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        gap: 1
-                      }}
-                    >
-                      <Box>
-                        <Typography variant="body2" sx={{ fontFamily: "var(--font-mono), monospace" }}>
-                          {shortenAddress(token.mint)}
+                holdings.tokens.slice(0, 20).map((token) => {
+                  const tokenMetadata = getTokenMetadata(token.mint);
+                  return (
+                    <Card key={token.account} variant="outlined" sx={{ borderRadius: 1.5 }}>
+                      <CardContent
+                        sx={{
+                          p: "10px !important",
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          gap: 1
+                        }}
+                      >
+                        <Box>
+                          <Typography variant="body2">
+                            {tokenMetadata?.symbol || shortenAddress(token.mint)}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {tokenMetadata?.name ? `${tokenMetadata.name} | ` : ""}
+                            ATA: {shortenAddress(token.account)}
+                          </Typography>
+                        </Box>
+                        <Typography sx={{ fontFamily: "var(--font-mono), monospace", fontWeight: 500 }}>
+                          {token.amountLabel}
                         </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          ATA: {shortenAddress(token.account)}
-                        </Typography>
-                      </Box>
-                      <Typography sx={{ fontFamily: "var(--font-mono), monospace", fontWeight: 500 }}>
-                        {token.amountLabel}
-                      </Typography>
-                    </CardContent>
-                  </Card>
-                ))
+                      </CardContent>
+                    </Card>
+                  );
+                })
               )}
             </Box>
           </>

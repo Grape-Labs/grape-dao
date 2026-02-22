@@ -13,6 +13,9 @@ export type TokenHolding = {
   rawAmount: string;
   decimals: number;
   isZeroBalance: boolean;
+  delegate: string | null;
+  delegatedAmount: string | null;
+  closeAuthority: string | null;
 };
 
 type WalletHoldings = {
@@ -97,7 +100,13 @@ export function useWalletHoldings(): WalletHoldingsState {
               amountLabel: tokenAmount.uiAmountString,
               rawAmount: tokenAmount.amount,
               decimals: tokenAmount.decimals,
-              isZeroBalance
+              isZeroBalance,
+              delegate: (parsedData.parsed.info.delegate as string | undefined) ?? null,
+              delegatedAmount:
+                (parsedData.parsed.info.delegatedAmount?.amount as string | undefined) ??
+                null,
+              closeAuthority:
+                (parsedData.parsed.info.closeAuthority as string | undefined) ?? null
             } satisfies TokenHolding;
           })
           .sort((a, b) => b.amount - a.amount);

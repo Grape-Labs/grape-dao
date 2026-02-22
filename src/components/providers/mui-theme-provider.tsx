@@ -21,20 +21,20 @@ export function MuiThemeProvider({ children }: MuiThemeProviderProps) {
           palette: {
             mode: "dark",
             primary: {
-              main: "#5fd3a2",
-              light: "#95efc8",
-              dark: "#2f8f6c"
+              main: "#56f2b3",
+              light: "#9dffd7",
+              dark: "#2ca579"
             },
             secondary: {
-              main: "#6db4ff"
+              main: "#78b7ff"
             },
             text: {
-              primary: "#e8eeec",
-              secondary: "#93a8a1"
+              primary: "#edf7f3",
+              secondary: "#97b0a8"
             },
             background: {
-              default: "#0b1115",
-              paper: "#121a20"
+              default: "#070c10",
+              paper: "#0f171d"
             }
           },
           shape: {
@@ -68,7 +68,7 @@ export function MuiThemeProvider({ children }: MuiThemeProviderProps) {
               styleOverrides: {
                 root: {
                   border: "1px solid rgba(147, 168, 161, 0.14)",
-                  boxShadow: "0 14px 34px rgba(0, 0, 0, 0.35)"
+                  boxShadow: "0 14px 34px rgba(0, 0, 0, 0.4)"
                 }
               }
             },
@@ -114,10 +114,22 @@ export function MuiThemeProvider({ children }: MuiThemeProviderProps) {
           },
           body: {
             margin: 0,
-            backgroundSize: "140% 140%",
-            animation: "adminBgShift 22s ease-in-out infinite",
+            backgroundSize: "160% 160%",
+            animation: "adminBgShift 20s ease-in-out infinite",
             background:
-              "radial-gradient(circle at 8% 4%, rgba(109, 180, 255, 0.2), transparent 34%), radial-gradient(circle at 92% 0%, rgba(95, 211, 162, 0.18), transparent 32%), linear-gradient(180deg, #0b1115 0%, #0a1114 55%, #090f12 100%)"
+              "radial-gradient(circle at 10% 6%, rgba(120, 183, 255, 0.22), transparent 36%), radial-gradient(circle at 92% 0%, rgba(86, 242, 179, 0.2), transparent 34%), radial-gradient(circle at 80% 70%, rgba(117, 82, 255, 0.08), transparent 44%), linear-gradient(180deg, #070c10 0%, #080f13 52%, #070b0f 100%)"
+          },
+          "body::after": {
+            content: "\"\"",
+            position: "fixed",
+            inset: 0,
+            pointerEvents: "none",
+            backgroundImage:
+              "linear-gradient(rgba(157, 255, 215, 0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(157, 255, 215, 0.04) 1px, transparent 1px)",
+            backgroundSize: "36px 36px",
+            maskImage:
+              "radial-gradient(circle at 20% 20%, black, transparent 72%)",
+            opacity: 0.22
           },
           ".fx-enter": {
             animation: "fxEnter 560ms cubic-bezier(0.2, 0.8, 0.2, 1) both"
@@ -127,9 +139,9 @@ export function MuiThemeProvider({ children }: MuiThemeProviderProps) {
               "transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease"
           },
           ".fx-card:hover": {
-            transform: "translateY(-3px)",
-            borderColor: "rgba(95, 211, 162, 0.45)",
-            boxShadow: "0 18px 34px rgba(0, 0, 0, 0.42)"
+            transform: "translateY(-4px) scale(1.01)",
+            borderColor: "rgba(86, 242, 179, 0.56)",
+            boxShadow: "0 22px 42px rgba(0, 0, 0, 0.48)"
           },
           ".fx-shell": {
             position: "relative",
@@ -143,6 +155,21 @@ export function MuiThemeProvider({ children }: MuiThemeProviderProps) {
               "linear-gradient(120deg, transparent 10%, rgba(95, 211, 162, 0.08) 45%, transparent 70%)",
             transform: "translateX(-120%)",
             animation: "fxSweep 9s ease-in-out infinite",
+            pointerEvents: "none"
+          },
+          ".fx-glow": {
+            position: "relative"
+          },
+          ".fx-glow::after": {
+            content: "\"\"",
+            position: "absolute",
+            inset: "-30% -12% auto auto",
+            width: "320px",
+            height: "320px",
+            borderRadius: "999px",
+            background:
+              "radial-gradient(circle, rgba(86, 242, 179, 0.3) 0%, rgba(120, 183, 255, 0.18) 38%, transparent 72%)",
+            filter: "blur(32px)",
             pointerEvents: "none"
           },
           ".fx-bars": {

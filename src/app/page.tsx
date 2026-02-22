@@ -1,4 +1,5 @@
 import { grapeLinks, grapeProducts } from "@/lib/grape";
+import { LiveSignalsPanel } from "@/components/solana/live-signals-panel";
 import { WalletSection } from "@/components/wallet/wallet-section";
 import Image from "next/image";
 import {
@@ -15,13 +16,20 @@ import {
 } from "@mui/material";
 
 export default function Home() {
+  const accentGradients = [
+    "linear-gradient(160deg, rgba(48, 84, 104, 0.7), rgba(17, 27, 34, 0.92))",
+    "linear-gradient(160deg, rgba(33, 96, 84, 0.7), rgba(12, 24, 30, 0.92))",
+    "linear-gradient(160deg, rgba(77, 64, 118, 0.68), rgba(15, 24, 34, 0.92))",
+    "linear-gradient(160deg, rgba(38, 85, 112, 0.68), rgba(11, 23, 31, 0.92))"
+  ];
+
   return (
     <Container maxWidth="xl" sx={{ py: { xs: 3, md: 6 } }}>
       <Card
-        className="fx-enter fx-pulse fx-shell"
+        className="fx-enter fx-pulse fx-shell fx-glow"
         sx={{
           background:
-            "linear-gradient(140deg, rgba(16, 28, 36, 0.97), rgba(10, 17, 24, 0.97))",
+            "linear-gradient(140deg, rgba(15, 26, 34, 0.98), rgba(8, 14, 19, 0.98))",
           borderRadius: 2.5
         }}
       >
@@ -32,8 +40,26 @@ export default function Home() {
                 <Typography variant="overline" color="primary.light">
                   Grape Hub | grape.art
                 </Typography>
-                <Typography variant="h1" sx={{ maxWidth: "18ch", fontSize: { xs: "2rem", md: "3rem" } }}>
-                  Identity, Access, and Governance Infrastructure
+                <Typography
+                  variant="h1"
+                  sx={{
+                    maxWidth: "17ch",
+                    fontSize: { xs: "2rem", md: "3.2rem" },
+                    lineHeight: 1.05
+                  }}
+                >
+                  Identity, Access, and{" "}
+                  <Box
+                    component="span"
+                    sx={{
+                      background:
+                        "linear-gradient(92deg, #9dffd7 8%, #78b7ff 46%, #77ffe0 100%)",
+                      backgroundClip: "text",
+                      color: "transparent"
+                    }}
+                  >
+                    Governance Infrastructure
+                  </Box>
                 </Typography>
                 <Typography color="text.secondary" sx={{ maxWidth: 760 }}>
                   Grape ships production Solana tooling for reputation,
@@ -62,58 +88,15 @@ export default function Home() {
                   <Chip label="Mainnet Live" color="primary" variant="outlined" />
                 </Stack>
                 <Stack direction={{ xs: "column", md: "row" }} spacing={1}>
-                  <Chip label="Programs: 3" variant="outlined" />
-                  <Chip label="SPL Governance UI" variant="outlined" />
-                  <Chip label="Wallet: Transfer / Burn / Close" variant="outlined" />
+                  <Chip label="Programs: 3" variant="outlined" color="secondary" />
+                  <Chip label="SPL Governance UI" variant="outlined" color="secondary" />
+                  <Chip label="Wallet: Transfer / Burn / Close" variant="outlined" color="secondary" />
                 </Stack>
               </Stack>
             </Grid>
 
             <Grid item xs={12} lg={4}>
-              <Card
-                className="fx-card fx-shell"
-                sx={{
-                  borderRadius: 2,
-                  height: "100%",
-                  background:
-                    "linear-gradient(170deg, rgba(16, 27, 33, 0.96), rgba(9, 15, 21, 0.95))"
-                }}
-              >
-                <CardContent sx={{ p: 2 }}>
-                  <Stack spacing={1.35}>
-                    <Stack direction="row" justifyContent="space-between" alignItems="center">
-                      <Typography variant="subtitle2">Live Signals</Typography>
-                      <Box className="fx-bars">
-                        <span />
-                        <span />
-                        <span />
-                        <span />
-                        <span />
-                      </Box>
-                    </Stack>
-                    <Box sx={{ border: "1px solid", borderColor: "divider", borderRadius: 1.5, p: 1.2 }}>
-                      <Typography variant="caption" color="text.secondary">
-                        Identity Console
-                      </Typography>
-                      <Typography variant="body2" sx={{ mt: 0.25 }}>
-                        SOL + SPL sends, burns, close accounts, Metaplex NFT full
-                        burn.
-                      </Typography>
-                    </Box>
-                    <Box sx={{ border: "1px solid", borderColor: "divider", borderRadius: 1.5, p: 1.2 }}>
-                      <Typography variant="caption" color="text.secondary">
-                        Program Scope
-                      </Typography>
-                      <Typography
-                        variant="body2"
-                        sx={{ mt: 0.25, fontFamily: "var(--font-mono), monospace" }}
-                      >
-                        VINE / Verification / Access
-                      </Typography>
-                    </Box>
-                  </Stack>
-                </CardContent>
-              </Card>
+              <LiveSignalsPanel />
             </Grid>
           </Grid>
         </CardContent>
@@ -125,7 +108,7 @@ export default function Home() {
             Products
           </Typography>
           <Typography variant="h2" sx={{ fontSize: { xs: "1.7rem", md: "2.2rem" } }}>
-            Protocol Surfaces
+            Grape Protocol
           </Typography>
         </Stack>
         <Grid container spacing={2} mt={0.5}>
@@ -136,13 +119,20 @@ export default function Home() {
                 sx={{
                   height: "100%",
                   borderRadius: 2.5,
-                  background:
-                    "linear-gradient(160deg, rgba(20, 31, 38, 0.96), rgba(12, 20, 25, 0.96))",
+                  background: accentGradients[index % accentGradients.length],
                   animationDelay: `${index * 90}ms`
                 }}
               >
                 <CardContent sx={{ p: 2.5 }}>
                   <Stack spacing={1.4}>
+                    <Stack direction="row" justifyContent="space-between" alignItems="center">
+                      <Chip
+                        size="small"
+                        variant="outlined"
+                        label={`0${index + 1}`}
+                        sx={{ fontFamily: "var(--font-mono), monospace" }}
+                      />
+                    </Stack>
                     <Stack direction="row" spacing={1.2} alignItems="center">
                       <Avatar
                         variant="rounded"
@@ -174,7 +164,7 @@ export default function Home() {
                       </Typography>
                       <Chip
                         sx={{
-                          mt: 0.65,
+                          mt: 1.1,
                           borderRadius: 2,
                           maxWidth: "100%",
                           "& .MuiChip-label": {
@@ -191,7 +181,7 @@ export default function Home() {
                     </Box>
                     <Box>
                       <Button
-                        variant="outlined"
+                        variant="contained"
                         color="primary"
                         href={product.href}
                         target="_blank"

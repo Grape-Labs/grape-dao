@@ -19,6 +19,19 @@ Next.js landing page for Grape Hub (`grape.art`) products with a Solana wallet a
   - SPL token burn
   - Empty token account close
   - Metaplex full burn for legacy NFTs (burn + close token account path)
+- Transaction Simulator + Decoder:
+  - Simulate before execute
+  - Exact instruction/program/account breakdown
+  - Token delta preview
+  - Rent impact and estimated fee
+  - Risk flags and runtime logs
+- Approval/Delegate Manager:
+  - Revoke token and NFT delegates
+  - Batch revoke delegates
+  - Surface suspicious close authorities
+- Rent Recovery Sweeper:
+  - Scan empty token accounts
+  - Batch close accounts to reclaim SOL rent
 - Motion-enhanced UI with animated admin panels and hover interactions
 - Basic holdings view:
   - SOL balance
