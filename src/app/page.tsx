@@ -30,10 +30,40 @@ export default function Home() {
         sx={{
           background:
             "linear-gradient(140deg, rgba(15, 26, 34, 0.98), rgba(8, 14, 19, 0.98))",
-          borderRadius: 2.5
+          borderRadius: 2.5,
+          position: "relative",
+          overflow: "hidden"
         }}
       >
-        <CardContent sx={{ p: { xs: 2.5, md: 3.5 } }}>
+        <video
+          autoPlay
+          loop
+          muted
+          playsInline
+          preload="metadata"
+          style={{
+            position: "absolute",
+            inset: 0,
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+            opacity: 0.16,
+            filter: "saturate(0.8) contrast(1.1)",
+            pointerEvents: "none"
+          }}
+        >
+          <source src="/images/grape_video.mp4" type="video/mp4" />
+        </video>
+        <Box
+          sx={{
+            position: "absolute",
+            inset: 0,
+            background:
+              "linear-gradient(135deg, rgba(9, 15, 21, 0.88), rgba(10, 17, 23, 0.82) 45%, rgba(9, 15, 21, 0.9))",
+            pointerEvents: "none"
+          }}
+        />
+        <CardContent sx={{ p: { xs: 2.5, md: 3.5 }, position: "relative", zIndex: 1 }}>
           <Grid container spacing={2.2}>
             <Grid item xs={12} lg={8}>
               <Stack spacing={1.9}>
