@@ -1,5 +1,6 @@
 import { grapeLinks, grapeProducts } from "@/lib/grape";
 import { LiveSignalsPanel } from "@/components/solana/live-signals-panel";
+import { RotatingTagline } from "@/components/brand/rotating-tagline";
 import Image from "next/image";
 import {
   Avatar,
@@ -47,6 +48,11 @@ export default function Home() {
         "DAO-controlled parent/child directory listings that make communities and protocol surfaces discoverable across the governance graph."
     }
   ];
+  const heroTaglines = [
+    "On-chain infrastructure for internet communities",
+    "Identity, reputation, access, and governance in one stack",
+    "Composable primitives for communities that need to scale"
+  ];
 
   return (
     <Container maxWidth="xl" sx={{ py: { xs: 3, md: 6 } }}>
@@ -92,9 +98,24 @@ export default function Home() {
           <Grid container spacing={2.2}>
             <Grid item xs={12} lg={8}>
               <Stack spacing={1.9}>
-                <Typography variant="overline" color="primary.light">
-                  Grape Hub | grape.art
-                </Typography>
+                <Stack
+                  direction={{ xs: "column", md: "row" }}
+                  spacing={1.2}
+                  alignItems={{ md: "center" }}
+                >
+                  <Typography variant="overline" color="primary.light">
+                    Grape Hub | grape.art
+                  </Typography>
+                  <RotatingTagline
+                    lines={heroTaglines}
+                    variant="overline"
+                    sx={{
+                      color: "text.secondary",
+                      letterSpacing: "0.09em",
+                      minHeight: 0
+                    }}
+                  />
+                </Stack>
                 <Typography
                   variant="h1"
                   sx={{
