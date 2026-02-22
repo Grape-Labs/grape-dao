@@ -3,15 +3,18 @@
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import {
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
   Box,
   Button,
   Card,
   CardContent,
   Chip,
-  Grid,
   Stack,
   Typography
 } from "@mui/material";
+import { useState } from "react";
 import { HoldingsPanel } from "@/components/wallet/holdings-panel";
 import { TokenAuthorityManager } from "@/components/wallet/token-authority-manager";
 import { useWalletHoldings } from "@/hooks/use-wallet-holdings";
@@ -24,6 +27,9 @@ export function TokenToolsSection() {
   const { connected, publicKey, disconnect, wallet } = useWallet();
   const { setVisible } = useWalletModal();
   const holdingsState = useWalletHoldings();
+  const [expandedSection, setExpandedSection] = useState<string | false>(
+    "operations"
+  );
 
   const walletLabel = publicKey ? shortenAddress(publicKey.toBase58()) : "Connect Identity";
 
@@ -82,14 +88,59 @@ export function TokenToolsSection() {
             <Chip variant="outlined" color="secondary" label="Mainnet" />
           </Stack>
 
-          <Grid container spacing={1.5}>
-            <Grid item xs={12} lg={7}>
+          <Accordion
+            expanded={expandedSection === "operations"}
+            onChange={(_event, isExpanded) => {
+              setExpandedSection(isExpanded ? "operations" : false);
+            }}
+            disableGutters
+            sx={{
+              bgcolor: "transparent",
+              border: "1px solid",
+              borderColor: "divider",
+              borderRadius: "8px !important"
+            }}
+          >
+            <AccordionSummary
+              expandIcon={
+                <Typography color="text.secondary">
+                  {expandedSection === "operations" ? "−" : "+"}
+                </Typography>
+              }
+            >
+              <Typography variant="subtitle2">Token Authority Operations</Typography>
+            </AccordionSummary>
+            <AccordionDetails sx={{ pt: 0.5 }}>
               <TokenAuthorityManager holdingsState={holdingsState} />
-            </Grid>
-            <Grid item xs={12} lg={5}>
+            </AccordionDetails>
+          </Accordion>
+
+          <Accordion
+            expanded={expandedSection === "holdings"}
+            onChange={(_event, isExpanded) => {
+              setExpandedSection(isExpanded ? "holdings" : false);
+            }}
+            disableGutters
+            sx={{
+              bgcolor: "transparent",
+              border: "1px solid",
+              borderColor: "divider",
+              borderRadius: "8px !important"
+            }}
+          >
+            <AccordionSummary
+              expandIcon={
+                <Typography color="text.secondary">
+                  {expandedSection === "holdings" ? "−" : "+"}
+                </Typography>
+              }
+            >
+              <Typography variant="subtitle2">Holdings</Typography>
+            </AccordionSummary>
+            <AccordionDetails sx={{ pt: 0.5 }}>
               <HoldingsPanel holdingsState={holdingsState} />
-            </Grid>
-          </Grid>
+            </AccordionDetails>
+          </Accordion>
         </Stack>
       </CardContent>
     </Card>
