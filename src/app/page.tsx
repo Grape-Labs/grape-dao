@@ -339,7 +339,7 @@ export default function Home() {
                               href={`https://explorer.solana.com/address/${step.programId}?cluster=mainnet`}
                               target="_blank"
                               rel="noreferrer"
-                              sx={{ mt: 0.4, px: 0, minWidth: 0 }}
+                              sx={{ mt: 0.4, ml: 1.1, px: 0, minWidth: 0 }}
                             >
                               View on Explorer
                             </Button>

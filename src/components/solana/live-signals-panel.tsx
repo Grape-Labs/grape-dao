@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useConnection } from "@solana/wallet-adapter-react";
 import { Alert, Box, Card, CardContent, Stack, Typography } from "@mui/material";
 
@@ -16,6 +16,10 @@ type LiveSignalsState = {
 const POLL_INTERVAL_MS = 15_000;
 
 function formatMetricNumber(value: number) {
+  if (!Number.isFinite(value)) {
+    return "--";
+  }
+
   return new Intl.NumberFormat(undefined, {
     maximumFractionDigits: 2
   }).format(value);
@@ -40,39 +44,91 @@ export function LiveSignalsPanel() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [updatedAt, setUpdatedAt] = useState<number | null>(null);
+  const throughputSnapshotRef = useRef<{
+    txCount: number;
+    slot: number;
+    observedAt: number;
+  } | null>(null);
 
   const refresh = useCallback(async () => {
     try {
       setError(null);
-      const [samples, slot, epochInfo, blockHeight] = await Promise.all([
+      const [samplesResult, slotResult, epochInfoResult, blockHeightResult, txCountResult] =
+        await Promise.allSettled([
         connection.getRecentPerformanceSamples(1),
         connection.getSlot("processed"),
         connection.getEpochInfo("processed"),
-        connection.getBlockHeight("processed")
+        connection.getBlockHeight("processed"),
+        connection.getTransactionCount("processed")
       ]);
 
-      const sample = samples[0];
-      const tps =
-        sample && sample.samplePeriodSecs > 0
-          ? sample.numTransactions / sample.samplePeriodSecs
-          : 0;
-      const avgSlotMs =
-        sample && sample.numSlots > 0
-          ? (sample.samplePeriodSecs / sample.numSlots) * 1000
-          : 0;
+      if (
+        slotResult.status !== "fulfilled" ||
+        epochInfoResult.status !== "fulfilled" ||
+        blockHeightResult.status !== "fulfilled"
+      ) {
+        throw new Error("Failed to fetch core Solana live signal metrics.");
+      }
+
+      const slot = slotResult.value;
+      const epochInfo = epochInfoResult.value;
+      const blockHeight = blockHeightResult.value;
+      const now = Date.now();
+
+      let sampleTps: number | null = null;
+      let sampleAvgSlotMs: number | null = null;
+      if (samplesResult.status === "fulfilled") {
+        const sample = samplesResult.value[0];
+        if (sample && sample.samplePeriodSecs > 0) {
+          sampleTps = sample.numTransactions / sample.samplePeriodSecs;
+          if (sample.numSlots > 0) {
+            sampleAvgSlotMs = (sample.samplePeriodSecs / sample.numSlots) * 1000;
+          }
+        }
+      }
+
+      let fallbackTps: number | null = null;
+      let fallbackAvgSlotMs: number | null = null;
+      if (txCountResult.status === "fulfilled") {
+        const txCount = txCountResult.value;
+        const previousSnapshot = throughputSnapshotRef.current;
+        throughputSnapshotRef.current = {
+          txCount,
+          slot,
+          observedAt: now
+        };
+
+        if (previousSnapshot) {
+          const elapsedSeconds = (now - previousSnapshot.observedAt) / 1000;
+          if (elapsedSeconds > 0) {
+            const deltaTx = txCount - previousSnapshot.txCount;
+            if (deltaTx >= 0) {
+              fallbackTps = deltaTx / elapsedSeconds;
+            }
+
+            const deltaSlot = slot - previousSnapshot.slot;
+            if (deltaSlot > 0) {
+              fallbackAvgSlotMs = (elapsedSeconds / deltaSlot) * 1000;
+            }
+          }
+        }
+      }
+
+      const resolvedTps = sampleTps ?? fallbackTps;
+      const resolvedAvgSlotMs = sampleAvgSlotMs ?? fallbackAvgSlotMs;
       const epochProgressPercent =
         epochInfo.slotsInEpoch > 0
           ? (epochInfo.slotIndex / epochInfo.slotsInEpoch) * 100
           : 0;
 
-      setSignals({
-        tps,
-        avgSlotMs,
+      setSignals((previousSignals) => ({
+        tps: resolvedTps ?? previousSignals?.tps ?? 0,
+        avgSlotMs: resolvedAvgSlotMs ?? previousSignals?.avgSlotMs ?? 0,
         slot,
         blockHeight,
         epoch: epochInfo.epoch,
         epochProgressPercent
-      });
+      }));
       setUpdatedAt(Date.now());
       setIsLoading(false);
     } catch (unknownError) {
