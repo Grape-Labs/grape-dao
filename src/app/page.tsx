@@ -53,6 +53,25 @@ export default function Home() {
     "Identity, reputation, access, and governance in one stack",
     "Composable primitives for communities that need to scale"
   ];
+  const gettingStartedSteps = [
+    {
+      title: "Create Your OG Reputation Space",
+      detail:
+        "Start at vine.governance.so, customize your branding, and launch a unique OG Reputation Space landing page for your community.",
+      href: "https://vine.governance.so",
+      ctaLabel: "Open vine.governance.so"
+    },
+    {
+      title: "Set Up How Reputation Is Rewarded",
+      detail:
+        "Configure the reputation rules, criteria, and contribution pathways your community will use for rewards."
+    },
+    {
+      title: "Set Up Your Discord Bot",
+      detail:
+        "Set up your Discord bot to automate workflows and start awarding reputation to your community."
+    }
+  ];
 
   return (
     <Container maxWidth="xl" sx={{ py: { xs: 3, md: 6 } }}>
@@ -196,6 +215,79 @@ export default function Home() {
           </Grid>
         </CardContent>
       </Card>
+
+      <Box mt={3}>
+        <Card
+          className="fx-enter fx-shell"
+          sx={{
+            borderRadius: 2.5,
+            background:
+              "linear-gradient(150deg, rgba(15, 27, 36, 0.94), rgba(9, 16, 22, 0.96))"
+          }}
+        >
+          <CardContent sx={{ p: { xs: 2.2, md: 2.8 } }}>
+            <Stack spacing={1.4}>
+              <Typography variant="overline" color="primary.light">
+                Getting Started
+              </Typography>
+              <Typography variant="h2" sx={{ fontSize: { xs: "1.35rem", md: "1.75rem" } }}>
+                Start by Creating Your OG Reputation Space
+              </Typography>
+              <Typography color="text.secondary">
+                Begin at{" "}
+                <Box component="span" sx={{ color: "primary.light" }}>
+                  vine.governance.so
+                </Box>{" "}
+                to create your OG Reputation Space and launch your community setup.
+              </Typography>
+              <Grid container spacing={1.2}>
+                {gettingStartedSteps.map((step, index) => (
+                  <Grid item xs={12} md={4} key={step.title}>
+                    <Card
+                      variant="outlined"
+                      sx={{
+                        height: "100%",
+                        borderRadius: 1.8,
+                        background:
+                          "linear-gradient(145deg, rgba(18, 32, 42, 0.9), rgba(12, 22, 30, 0.9))",
+                        borderColor: "divider"
+                      }}
+                    >
+                      <CardContent sx={{ p: 1.3, "&:last-child": { pb: 1.3 } }}>
+                        <Stack spacing={0.8}>
+                          <Chip
+                            size="small"
+                            variant="outlined"
+                            label={`Step ${index + 1}`}
+                            sx={{ width: "fit-content" }}
+                          />
+                          <Typography variant="subtitle2">{step.title}</Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            {step.detail}
+                          </Typography>
+                          {step.href ? (
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              color="secondary"
+                              href={step.href}
+                              target="_blank"
+                              rel="noreferrer"
+                              sx={{ width: "fit-content" }}
+                            >
+                              {step.ctaLabel}
+                            </Button>
+                          ) : null}
+                        </Stack>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                ))}
+              </Grid>
+            </Stack>
+          </CardContent>
+        </Card>
+      </Box>
 
       <Box mt={5}>
         <Stack spacing={1}>
