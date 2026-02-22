@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useConnection, useWallet } from "@solana/wallet-adapter-react";
+import { useConnection } from "@solana/wallet-adapter-react";
 import type { ParsedAccountData } from "@solana/web3.js";
 import { PublicKey } from "@solana/web3.js";
 import { MPL_TOKEN_METADATA_PROGRAM_ID } from "@metaplex-foundation/mpl-token-metadata";
@@ -231,9 +231,16 @@ function parseMetadataAttributes(value: unknown): MetadataJsonAttribute[] {
 
 export function HoldingsPanel({ holdingsState }: HoldingsPanelProps) {
   const { connection } = useConnection();
-  const { publicKey, connected } = useWallet();
   const { shyftApiKey } = useRpcEndpoint();
-  const { holdings, isLoading, error, refresh, updatedAt } = holdingsState;
+  const {
+    holdings,
+    isLoading,
+    error,
+    refresh,
+    updatedAt,
+    ownerAddress,
+    isExternalTarget
+  } = holdingsState;
   const { getTokenMetadata } = useTokenMetadata(
     holdings.tokens.map((token) => token.mint)
   );
@@ -488,7 +495,7 @@ export function HoldingsPanel({ holdingsState }: HoldingsPanelProps) {
     let cancelled = false;
 
     async function loadShyftWalletData() {
-      if (!connected || !publicKey || !shyftApiKey) {
+      if (!ownerAddress || !shyftApiKey) {
         setShyftTokens([]);
         setShyftNfts([]);
         setShyftError(null);
@@ -502,11 +509,11 @@ export function HoldingsPanel({ holdingsState }: HoldingsPanelProps) {
         const [tokensPayload, nftsPayload] = await Promise.all([
           fetchShyft<unknown>(shyftApiKey, "/sol/v1/wallet/all_tokens", {
             network: SHYFT_NETWORK,
-            wallet: publicKey.toBase58()
+            wallet: ownerAddress
           }),
           fetchShyft<unknown>(shyftApiKey, "/sol/v1/nft/read_all", {
             network: SHYFT_NETWORK,
-            address: publicKey.toBase58()
+            address: ownerAddress
           })
         ]);
 
@@ -538,7 +545,7 @@ export function HoldingsPanel({ holdingsState }: HoldingsPanelProps) {
     return () => {
       cancelled = true;
     };
-  }, [connected, publicKey, shyftApiKey]);
+  }, [ownerAddress, shyftApiKey]);
 
   return (
     <Card className="fx-card" variant="outlined" sx={{ borderRadius: 1.75 }}>
@@ -549,16 +556,16 @@ export function HoldingsPanel({ holdingsState }: HoldingsPanelProps) {
             variant="outlined"
             size="small"
             onClick={refresh}
-            disabled={!connected || isLoading}
+            disabled={!ownerAddress || isLoading}
           >
             {isLoading ? "Refreshing..." : "Refresh"}
           </Button>
         </Stack>
 
         <Divider sx={{ my: 1.5 }} />
-        {!connected || !publicKey ? (
+        {!ownerAddress ? (
           <Typography color="text.secondary">
-            Connect your wallet identity to see SOL, SPL, and NFT candidate balances.
+            Connect your wallet identity or open `/identity/[publickey]` to view holdings.
           </Typography>
         ) : (
           <>
@@ -567,7 +574,7 @@ export function HoldingsPanel({ holdingsState }: HoldingsPanelProps) {
               color="text.secondary"
               sx={{ wordBreak: "break-all", fontFamily: "var(--font-mono), monospace" }}
             >
-              {publicKey.toBase58()}
+              {ownerAddress}
             </Typography>
 
             <Stack direction={{ xs: "column", sm: "row" }} spacing={1} mt={1.5}>
@@ -579,6 +586,9 @@ export function HoldingsPanel({ holdingsState }: HoldingsPanelProps) {
               />
               <Chip variant="outlined" label={`Token Accounts: ${holdings.tokens.length}`} />
               <Chip variant="outlined" label={`NFT Candidates: ${potentialNfts.length}`} />
+              {isExternalTarget ? (
+                <Chip variant="outlined" color="secondary" label="Address Mode" />
+              ) : null}
             </Stack>
 
             <Typography variant="caption" color="text.secondary" display="block" mt={1.2}>

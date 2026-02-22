@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import type { ParsedAccountData } from "@solana/web3.js";
+import { PublicKey } from "@solana/web3.js";
 import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
 
 export type TokenHolding = {
@@ -30,6 +31,12 @@ export type WalletHoldingsState = {
   error: string | null;
   refresh: () => void;
   updatedAt: number | null;
+  ownerAddress: string | null;
+  isExternalTarget: boolean;
+};
+
+type UseWalletHoldingsOptions = {
+  targetAddress?: string | null;
 };
 
 const INITIAL_HOLDINGS: WalletHoldings = {
@@ -38,14 +45,30 @@ const INITIAL_HOLDINGS: WalletHoldings = {
   tokenAccounts: []
 };
 
-export function useWalletHoldings(): WalletHoldingsState {
+export function useWalletHoldings(
+  options: UseWalletHoldingsOptions = {}
+): WalletHoldingsState {
   const { connection } = useConnection();
   const { publicKey, connected } = useWallet();
+  const targetAddress = options.targetAddress?.trim() || null;
   const [holdings, setHoldings] = useState<WalletHoldings>(INITIAL_HOLDINGS);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [updatedAt, setUpdatedAt] = useState<number | null>(null);
   const [refreshIndex, setRefreshIndex] = useState(0);
+  const externalTargetPublicKey = useMemo(() => {
+    if (!targetAddress) {
+      return null;
+    }
+    try {
+      return new PublicKey(targetAddress);
+    } catch {
+      return null;
+    }
+  }, [targetAddress]);
+  const ownerPublicKey = externalTargetPublicKey ?? (connected ? publicKey : null);
+  const ownerAddress = ownerPublicKey?.toBase58() ?? null;
+  const isExternalTarget = Boolean(targetAddress);
 
   const refresh = useCallback(() => {
     setRefreshIndex((value) => value + 1);
@@ -55,7 +78,15 @@ export function useWalletHoldings(): WalletHoldingsState {
     let cancelled = false;
 
     async function loadHoldings() {
-      if (!connected || !publicKey) {
+      if (targetAddress && !externalTargetPublicKey) {
+        setHoldings(INITIAL_HOLDINGS);
+        setError("Invalid wallet address.");
+        setIsLoading(false);
+        setUpdatedAt(null);
+        return;
+      }
+
+      if (!ownerPublicKey) {
         setHoldings(INITIAL_HOLDINGS);
         setError(null);
         setIsLoading(false);
@@ -68,9 +99,9 @@ export function useWalletHoldings(): WalletHoldingsState {
 
       try {
         const [balanceLamports, tokenAccounts] = await Promise.all([
-          connection.getBalance(publicKey, "confirmed"),
+          connection.getBalance(ownerPublicKey, "confirmed"),
           connection.getParsedTokenAccountsByOwner(
-            publicKey,
+            ownerPublicKey,
             { programId: TOKEN_PROGRAM_ID },
             "confirmed"
           )
@@ -140,13 +171,22 @@ export function useWalletHoldings(): WalletHoldingsState {
     return () => {
       cancelled = true;
     };
-  }, [connected, connection, publicKey, refreshIndex]);
+  }, [
+    connected,
+    connection,
+    externalTargetPublicKey,
+    ownerPublicKey,
+    refreshIndex,
+    targetAddress
+  ]);
 
   return {
     holdings,
     isLoading,
     error,
     refresh,
-    updatedAt
+    updatedAt,
+    ownerAddress,
+    isExternalTarget
   };
 }

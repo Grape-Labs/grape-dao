@@ -1,19 +1,22 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import type { MessageSignerWalletAdapter } from "@solana/wallet-adapter-base";
 import {
   ASSOCIATED_TOKEN_PROGRAM_ID,
   AuthorityType,
+  ExtensionType,
   MINT_SIZE,
   TOKEN_2022_PROGRAM_ID,
   TOKEN_PROGRAM_ID,
   createAssociatedTokenAccountInstruction,
+  createInitializeMintCloseAuthorityInstruction,
   createInitializeMint2Instruction,
   createMintToInstruction,
   createSetAuthorityInstruction,
-  getAssociatedTokenAddressSync
+  getAssociatedTokenAddressSync,
+  getMintLen
 } from "@solana/spl-token";
 import {
   type ParsedAccountData,
@@ -33,6 +36,9 @@ import {
 import { publicKey as umiPublicKey } from "@metaplex-foundation/umi";
 import { Buffer } from "buffer";
 import {
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
   Alert,
   Button,
   CircularProgress,
@@ -259,6 +265,10 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
     "self" | "none" | "custom"
   >("self");
   const [customFreezeAuthority, setCustomFreezeAuthority] = useState("");
+  const [mintCloseAuthorityMode, setMintCloseAuthorityMode] = useState<
+    "disabled" | "self" | "custom"
+  >("disabled");
+  const [customMintCloseAuthority, setCustomMintCloseAuthority] = useState("");
   const [createdMint, setCreatedMint] = useState("");
   const [createdMints, setCreatedMints] = useState<string[]>([]);
   const [authorityMints, setAuthorityMints] = useState<AuthorityMint[]>([]);
@@ -298,9 +308,16 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
   const [metadataJsonDraft, setMetadataJsonDraft] = useState(() =>
     JSON.stringify(buildTokenMetadataTemplate("", ""), null, 2)
   );
+  const [expandedMetadataUpload, setExpandedMetadataUpload] = useState<
+    "image" | "json" | false
+  >("image");
 
   const activeTokenProgramPublicKey = useMemo(
     () => new PublicKey(tokenProgramId),
+    [tokenProgramId]
+  );
+  const isToken2022Program = useMemo(
+    () => tokenProgramId === TOKEN_2022_PROGRAM_ID.toBase58(),
     [tokenProgramId]
   );
   const selectedTokenProgramPreset = useMemo(() => {
@@ -310,6 +327,12 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
     );
     return matchedPreset ? matchedPreset.value : "custom";
   }, [tokenProgramInput]);
+
+  useEffect(() => {
+    if (!isToken2022Program && mintCloseAuthorityMode !== "disabled") {
+      setMintCloseAuthorityMode("disabled");
+    }
+  }, [isToken2022Program, mintCloseAuthorityMode]);
 
   const loadAuthorityMintsFromKnownMints = useCallback(async () => {
     if (!publicKey) {
@@ -629,19 +652,49 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
         freezeAuthorityPublicKey = new PublicKey(customFreezeAuthority.trim());
       }
 
+      const usesMintCloseAuthority = mintCloseAuthorityMode !== "disabled";
+      if (usesMintCloseAuthority && !isToken2022Program) {
+        throw new Error(
+          "Mint close authority is only supported with Token-2022. Select SPL Token 2022 first."
+        );
+      }
+
+      let mintCloseAuthorityPublicKey: PublicKey | null = null;
+      if (mintCloseAuthorityMode === "self") {
+        mintCloseAuthorityPublicKey = publicKey;
+      } else if (mintCloseAuthorityMode === "custom") {
+        mintCloseAuthorityPublicKey = new PublicKey(customMintCloseAuthority.trim());
+      }
+
       const mintKeypair = Keypair.generate();
+      const mintSize = usesMintCloseAuthority
+        ? getMintLen([ExtensionType.MintCloseAuthority])
+        : MINT_SIZE;
       const rentExempt = await connection.getMinimumBalanceForRentExemption(
-        MINT_SIZE
+        mintSize
       );
 
       const transaction = new Transaction().add(
         SystemProgram.createAccount({
           fromPubkey: publicKey,
           newAccountPubkey: mintKeypair.publicKey,
-          space: MINT_SIZE,
+          space: mintSize,
           lamports: rentExempt,
           programId: activeTokenProgramPublicKey
-        }),
+        })
+      );
+
+      if (usesMintCloseAuthority) {
+        transaction.add(
+          createInitializeMintCloseAuthorityInstruction(
+            mintKeypair.publicKey,
+            mintCloseAuthorityPublicKey,
+            activeTokenProgramPublicKey
+          )
+        );
+      }
+
+      transaction.add(
         createInitializeMint2Instruction(
           mintKeypair.publicKey,
           decimals,
@@ -664,7 +717,9 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
       void loadAuthorityMints();
       setStatus({
         severity: "success",
-        message: `Created mint ${mintBase58}`,
+        message: usesMintCloseAuthority
+          ? `Created Token-2022 closable mint ${mintBase58}`
+          : `Created mint ${mintBase58}`,
         signature
       });
     } catch (unknownError) {
@@ -1617,113 +1672,174 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
                 <Typography variant="caption" color="text.secondary">
                   User-funded upload from connected wallet. Write metadata JSON with a template or upload a file.
                 </Typography>
-                <TextField
-                  size="small"
-                  label="Token Image URI"
-                  value={tokenImageUri}
-                  onChange={(event) => {
-                    setTokenImageUri(event.target.value);
+                <Accordion
+                  expanded={expandedMetadataUpload === "image"}
+                  onChange={(_event, isExpanded) => {
+                    setExpandedMetadataUpload(isExpanded ? "image" : false);
                   }}
-                  placeholder="https://.../token-image.png"
-                />
-                <Stack direction={{ xs: "column", md: "row" }} spacing={1}>
-                  <Button
-                    variant="outlined"
-                    onClick={applyTokenImageUriInput}
-                    disabled={isUploadingMetadata}
-                  >
-                    Apply Image URI to JSON
-                  </Button>
-                  <Button
-                    variant="outlined"
-                    component="label"
-                    disabled={isUploadingMetadata}
-                  >
-                    Upload Image File
-                    <input
-                      hidden
-                      type="file"
-                      accept="image/*"
-                      onChange={(event) => {
-                        const selectedFile = event.target.files?.[0] ?? null;
-                        void uploadTokenImageToIrys(selectedFile);
-                        event.currentTarget.value = "";
-                      }}
-                    />
-                  </Button>
-                </Stack>
-                {uploadedImageUrl ? (
-                  <Typography
-                    variant="caption"
-                    color="text.secondary"
-                    sx={{ wordBreak: "break-all", fontFamily: "var(--font-mono), monospace" }}
-                  >
-                    Uploaded Image URI: {uploadedImageUrl}
-                  </Typography>
-                ) : null}
-                <TextField
-                  multiline
-                  minRows={8}
-                  size="small"
-                  label="Metadata JSON"
-                  value={metadataJsonDraft}
-                  onChange={(event) => {
-                    setMetadataJsonDraft(event.target.value);
+                  disableGutters
+                  sx={{
+                    bgcolor: "transparent",
+                    border: "1px solid",
+                    borderColor: "divider",
+                    borderRadius: "8px !important"
                   }}
-                  placeholder={`{\n  "name": "My Token",\n  "symbol": "MYT"\n}`}
-                />
-                <Stack direction={{ xs: "column", md: "row" }} spacing={1}>
-                  <Button
-                    variant="outlined"
-                    onClick={prefillMetadataJsonDraft}
-                    disabled={isUploadingMetadata}
-                  >
-                    Prefill Template
-                  </Button>
-                  <Button
-                    variant="contained"
-                    onClick={() => {
-                      void uploadMetadataDraftToIrys();
-                    }}
-                    disabled={isUploadingMetadata}
-                  >
-                    Upload Draft JSON
-                  </Button>
-                  <Button
-                    variant="outlined"
-                    component="label"
-                    disabled={isUploadingMetadata}
-                  >
-                    Upload JSON File
-                    <input
-                      hidden
-                      type="file"
-                      accept="application/json,.json"
-                      onChange={(event) => {
-                        const selectedFile = event.target.files?.[0] ?? null;
-                        void uploadMetadataToIrys(selectedFile);
-                        event.currentTarget.value = "";
-                      }}
-                    />
-                  </Button>
-                  {isUploadingMetadata ? (
-                    <Stack direction="row" spacing={1} alignItems="center">
-                      <CircularProgress size={16} />
-                      <Typography variant="caption" color="text.secondary">
-                        Uploading to Irys...
+                >
+                  <AccordionSummary
+                    expandIcon={
+                      <Typography color="text.secondary">
+                        {expandedMetadataUpload === "image" ? "−" : "+"}
                       </Typography>
-                    </Stack>
-                  ) : null}
-                </Stack>
-                {uploadedMetadataUrl ? (
-                  <Typography
-                    variant="caption"
-                    color="text.secondary"
-                    sx={{ wordBreak: "break-all", fontFamily: "var(--font-mono), monospace" }}
+                    }
                   >
-                    Uploaded URI: {uploadedMetadataUrl}
-                  </Typography>
-                ) : null}
+                    <Typography variant="subtitle2">Image URI + Upload</Typography>
+                  </AccordionSummary>
+                  <AccordionDetails sx={{ pt: 0.25 }}>
+                    <Stack spacing={1}>
+                      <TextField
+                        size="small"
+                        label="Token Image URI"
+                        value={tokenImageUri}
+                        onChange={(event) => {
+                          setTokenImageUri(event.target.value);
+                        }}
+                        placeholder="https://.../token-image.png"
+                      />
+                      <Stack direction={{ xs: "column", md: "row" }} spacing={1}>
+                        <Button
+                          variant="outlined"
+                          onClick={applyTokenImageUriInput}
+                          disabled={isUploadingMetadata}
+                        >
+                          Apply Image URI to JSON
+                        </Button>
+                        <Button
+                          variant="outlined"
+                          component="label"
+                          disabled={isUploadingMetadata}
+                        >
+                          Upload Image File
+                          <input
+                            hidden
+                            type="file"
+                            accept="image/*"
+                            onChange={(event) => {
+                              const selectedFile = event.target.files?.[0] ?? null;
+                              void uploadTokenImageToIrys(selectedFile);
+                              event.currentTarget.value = "";
+                            }}
+                          />
+                        </Button>
+                      </Stack>
+                      {uploadedImageUrl ? (
+                        <Typography
+                          variant="caption"
+                          color="text.secondary"
+                          sx={{
+                            wordBreak: "break-all",
+                            fontFamily: "var(--font-mono), monospace"
+                          }}
+                        >
+                          Uploaded Image URI: {uploadedImageUrl}
+                        </Typography>
+                      ) : null}
+                    </Stack>
+                  </AccordionDetails>
+                </Accordion>
+
+                <Accordion
+                  expanded={expandedMetadataUpload === "json"}
+                  onChange={(_event, isExpanded) => {
+                    setExpandedMetadataUpload(isExpanded ? "json" : false);
+                  }}
+                  disableGutters
+                  sx={{
+                    bgcolor: "transparent",
+                    border: "1px solid",
+                    borderColor: "divider",
+                    borderRadius: "8px !important"
+                  }}
+                >
+                  <AccordionSummary
+                    expandIcon={
+                      <Typography color="text.secondary">
+                        {expandedMetadataUpload === "json" ? "−" : "+"}
+                      </Typography>
+                    }
+                  >
+                    <Typography variant="subtitle2">Metadata JSON + Upload</Typography>
+                  </AccordionSummary>
+                  <AccordionDetails sx={{ pt: 0.25 }}>
+                    <Stack spacing={1}>
+                      <TextField
+                        multiline
+                        minRows={8}
+                        size="small"
+                        label="Metadata JSON"
+                        value={metadataJsonDraft}
+                        onChange={(event) => {
+                          setMetadataJsonDraft(event.target.value);
+                        }}
+                        placeholder={`{\n  "name": "My Token",\n  "symbol": "MYT"\n}`}
+                      />
+                      <Stack direction={{ xs: "column", md: "row" }} spacing={1}>
+                        <Button
+                          variant="outlined"
+                          onClick={prefillMetadataJsonDraft}
+                          disabled={isUploadingMetadata}
+                        >
+                          Prefill Template
+                        </Button>
+                        <Button
+                          variant="contained"
+                          onClick={() => {
+                            void uploadMetadataDraftToIrys();
+                          }}
+                          disabled={isUploadingMetadata}
+                        >
+                          Upload Draft JSON
+                        </Button>
+                        <Button
+                          variant="outlined"
+                          component="label"
+                          disabled={isUploadingMetadata}
+                        >
+                          Upload JSON File
+                          <input
+                            hidden
+                            type="file"
+                            accept="application/json,.json"
+                            onChange={(event) => {
+                              const selectedFile = event.target.files?.[0] ?? null;
+                              void uploadMetadataToIrys(selectedFile);
+                              event.currentTarget.value = "";
+                            }}
+                          />
+                        </Button>
+                        {isUploadingMetadata ? (
+                          <Stack direction="row" spacing={1} alignItems="center">
+                            <CircularProgress size={16} />
+                            <Typography variant="caption" color="text.secondary">
+                              Uploading to Irys...
+                            </Typography>
+                          </Stack>
+                        ) : null}
+                      </Stack>
+                      {uploadedMetadataUrl ? (
+                        <Typography
+                          variant="caption"
+                          color="text.secondary"
+                          sx={{
+                            wordBreak: "break-all",
+                            fontFamily: "var(--font-mono), monospace"
+                          }}
+                        >
+                          Uploaded URI: {uploadedMetadataUrl}
+                        </Typography>
+                      ) : null}
+                    </Stack>
+                  </AccordionDetails>
+                </Accordion>
               </Stack>
             </CardContent>
           </Card>
@@ -1757,6 +1873,31 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
                     <MenuItem value="none">None</MenuItem>
                     <MenuItem value="custom">Custom</MenuItem>
                   </TextField>
+                  <TextField
+                    select
+                    size="small"
+                    label="Mint Close Authority"
+                    value={mintCloseAuthorityMode}
+                    onChange={(event) => {
+                      setMintCloseAuthorityMode(
+                        event.target.value as "disabled" | "self" | "custom"
+                      );
+                    }}
+                    sx={{ minWidth: { xs: "100%", md: 220 } }}
+                    helperText={
+                      isToken2022Program
+                        ? "Token-2022 extension. Required for closable mints."
+                        : "Select SPL Token 2022 to enable."
+                    }
+                  >
+                    <MenuItem value="disabled">Disabled</MenuItem>
+                    <MenuItem value="self" disabled={!isToken2022Program}>
+                      Connected Wallet
+                    </MenuItem>
+                    <MenuItem value="custom" disabled={!isToken2022Program}>
+                      Custom
+                    </MenuItem>
+                  </TextField>
                   {freezeAuthorityMode === "custom" ? (
                     <TextField
                       size="small"
@@ -1764,6 +1905,17 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
                       value={customFreezeAuthority}
                       onChange={(event) => {
                         setCustomFreezeAuthority(event.target.value);
+                      }}
+                      fullWidth
+                    />
+                  ) : null}
+                  {mintCloseAuthorityMode === "custom" ? (
+                    <TextField
+                      size="small"
+                      label="Custom Mint Close Authority"
+                      value={customMintCloseAuthority}
+                      onChange={(event) => {
+                        setCustomMintCloseAuthority(event.target.value);
                       }}
                       fullWidth
                     />
