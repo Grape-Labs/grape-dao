@@ -84,6 +84,22 @@ type AuthorityMint = {
   isInitialized: boolean;
 };
 
+type AuthorityInventoryRow = {
+  mint: string;
+  programId: string;
+  decimals: number;
+  supplyLabel: string;
+  mintAuthority: string | null;
+  freezeAuthority: string | null;
+  metadataUpdateAuthority: string | null;
+  metadataUri: string | null;
+  metadataMutable: boolean | null;
+  hasMintAuthority: boolean;
+  hasFreezeAuthority: boolean;
+  hasMetadataAuthority: boolean;
+  riskFlags: string[];
+};
+
 type StatusState = {
   severity: "success" | "error" | "info";
   message: string;
@@ -221,6 +237,41 @@ function shortenAddress(address: string) {
   return `${address.slice(0, 6)}...${address.slice(-6)}`;
 }
 
+function parseMintAddressesInput(input: string) {
+  const lines = input
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && !line.startsWith("#"));
+  const unique = new Set<string>();
+  lines.forEach((line) => {
+    const mintText = line.includes(",") ? line.split(",")[0].trim() : line;
+    unique.add(new PublicKey(mintText).toBase58());
+  });
+  return Array.from(unique);
+}
+
+function parseMintAccountCore(data: Uint8Array) {
+  const mintAuthorityOption = readU32LE(data, 0);
+  const mintAuthority =
+    mintAuthorityOption === 1 ? new PublicKey(data.slice(4, 36)).toBase58() : null;
+  const freezeAuthorityOption = readU32LE(data, 46);
+  const freezeAuthority =
+    freezeAuthorityOption === 1
+      ? new PublicKey(data.slice(50, 82)).toBase58()
+      : null;
+  const decimals = data[44] ?? 0;
+  const isInitialized = (data[45] ?? 0) === 1;
+  const supplyRaw = readU64LE(data, 36);
+
+  return {
+    mintAuthority,
+    freezeAuthority,
+    decimals,
+    isInitialized,
+    supplyRaw
+  };
+}
+
 function buildTokenMetadataTemplate(
   name: string,
   symbol: string,
@@ -278,6 +329,19 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
   const [authorityScanScope, setAuthorityScanScope] = useState<
     "known" | "active" | "all"
   >("known");
+  const [authorityInventory, setAuthorityInventory] = useState<
+    AuthorityInventoryRow[]
+  >([]);
+  const [authorityInventoryLoading, setAuthorityInventoryLoading] = useState(false);
+  const [authorityInventoryInput, setAuthorityInventoryInput] = useState("");
+  const [rotationTargetMints, setRotationTargetMints] = useState("");
+  const [rotationNewAuthority, setRotationNewAuthority] = useState("");
+  const [rotateMintAuthorityEnabled, setRotateMintAuthorityEnabled] =
+    useState(true);
+  const [rotateFreezeAuthorityEnabled, setRotateFreezeAuthorityEnabled] =
+    useState(true);
+  const [rotateMetadataAuthorityEnabled, setRotateMetadataAuthorityEnabled] =
+    useState(true);
 
   const [mintAddress, setMintAddress] = useState("");
   const [mintDestinationOwner, setMintDestinationOwner] = useState("");
@@ -597,6 +661,457 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
     loadAuthorityMintsFromKnownMints,
     publicKey
   ]);
+
+  const buildInventoryCandidateMints = useCallback(() => {
+    const candidateMints = new Set<string>();
+
+    holdingsState.holdings.tokenAccounts.forEach((tokenAccount) => {
+      candidateMints.add(tokenAccount.mint);
+    });
+    createdMints.forEach((mint) => {
+      candidateMints.add(mint);
+    });
+    authorityMints.forEach((mintEntry) => {
+      candidateMints.add(mintEntry.mint);
+    });
+    [
+      mintAddress,
+      distributionMintAddress,
+      authorityMint,
+      metadataMint,
+      metadataAuthorityMint,
+      metadataUriOnlyMint
+    ]
+      .map((value) => value.trim())
+      .filter((value) => value.length > 0)
+      .forEach((value) => candidateMints.add(value));
+
+    parseMintAddressesInput(authorityInventoryInput).forEach((mint) => {
+      candidateMints.add(mint);
+    });
+
+    return Array.from(candidateMints);
+  }, [
+    authorityInventoryInput,
+    authorityMint,
+    authorityMints,
+    createdMints,
+    distributionMintAddress,
+    holdingsState.holdings.tokenAccounts,
+    metadataAuthorityMint,
+    metadataMint,
+    metadataUriOnlyMint,
+    mintAddress
+  ]);
+
+  const scanAuthorityInventory = async () => {
+    if (!publicKey) {
+      setStatus({ severity: "error", message: "Connect your wallet first." });
+      return;
+    }
+
+    setAuthorityInventoryLoading(true);
+    setStatus(null);
+    try {
+      const candidateMints = buildInventoryCandidateMints();
+      if (candidateMints.length === 0) {
+        setAuthorityInventory([]);
+        setStatus({
+          severity: "info",
+          message: "No candidate mints found. Add mint addresses or connect holdings."
+        });
+        return;
+      }
+
+      const mintPublicKeys = candidateMints.map((mint) => new PublicKey(mint));
+      const mintInfoChunks: Awaited<ReturnType<typeof connection.getMultipleAccountsInfo>>[] =
+        [];
+      for (let index = 0; index < mintPublicKeys.length; index += 100) {
+        const chunk = mintPublicKeys.slice(index, index + 100);
+        mintInfoChunks.push(
+          await connection.getMultipleAccountsInfo(chunk, "confirmed")
+        );
+      }
+      const mintInfos = mintInfoChunks.flat();
+
+      const metadataPdas = mintPublicKeys.map((mint) => findMetadataPda(mint));
+      const metadataInfoChunks: Awaited<
+        ReturnType<typeof connection.getMultipleAccountsInfo>
+      >[] = [];
+      for (let index = 0; index < metadataPdas.length; index += 100) {
+        const chunk = metadataPdas.slice(index, index + 100);
+        metadataInfoChunks.push(
+          await connection.getMultipleAccountsInfo(chunk, "confirmed")
+        );
+      }
+      const metadataInfos = metadataInfoChunks.flat();
+
+      const walletAddress = publicKey.toBase58();
+      const rows: AuthorityInventoryRow[] = candidateMints
+        .map((mint, index) => {
+          const mintInfo = mintInfos[index];
+          if (
+            !mintInfo ||
+            mintInfo.data.length < 82 ||
+            (!mintInfo.owner.equals(TOKEN_PROGRAM_ID) &&
+              !mintInfo.owner.equals(TOKEN_2022_PROGRAM_ID))
+          ) {
+            return null;
+          }
+
+          const parsedMint = parseMintAccountCore(mintInfo.data);
+          const metadataInfo = metadataInfos[index];
+
+          let metadataUpdateAuthority: string | null = null;
+          let metadataUri: string | null = null;
+          let metadataMutable: boolean | null = null;
+
+          if (
+            metadataInfo &&
+            metadataInfo.owner.equals(TOKEN_METADATA_PROGRAM_ID)
+          ) {
+            try {
+              const [metadata] = getMetadataAccountDataSerializer().deserialize(
+                metadataInfo.data
+              );
+              metadataUpdateAuthority = String(metadata.updateAuthority);
+              metadataUri = metadata.uri.replace(/\0/g, "").trim() || null;
+              metadataMutable = Boolean(metadata.isMutable);
+            } catch {
+              metadataUpdateAuthority = null;
+              metadataUri = null;
+              metadataMutable = null;
+            }
+          }
+
+          const hasMintAuthority = parsedMint.mintAuthority === walletAddress;
+          const hasFreezeAuthority = parsedMint.freezeAuthority === walletAddress;
+          const hasMetadataAuthority = metadataUpdateAuthority === walletAddress;
+          const isNftCandidate =
+            parsedMint.decimals === 0 && parsedMint.supplyRaw === 1n;
+          const riskFlags: string[] = [];
+
+          if (hasMintAuthority) {
+            riskFlags.push("Wallet retains mint authority");
+          }
+          if (hasFreezeAuthority) {
+            riskFlags.push("Wallet retains freeze authority");
+          }
+          if (hasMetadataAuthority) {
+            riskFlags.push("Wallet retains metadata update authority");
+          }
+          if (isNftCandidate && !metadataInfo) {
+            riskFlags.push("NFT candidate missing metadata account");
+          }
+          if (metadataInfo && !metadataUri) {
+            riskFlags.push("Metadata URI is empty");
+          }
+          if (metadataMutable === true) {
+            riskFlags.push("Metadata remains mutable");
+          }
+
+          return {
+            mint,
+            programId: mintInfo.owner.toBase58(),
+            decimals: parsedMint.decimals,
+            supplyLabel: formatRawUnits(parsedMint.supplyRaw, parsedMint.decimals),
+            mintAuthority: parsedMint.mintAuthority,
+            freezeAuthority: parsedMint.freezeAuthority,
+            metadataUpdateAuthority,
+            metadataUri,
+            metadataMutable,
+            hasMintAuthority,
+            hasFreezeAuthority,
+            hasMetadataAuthority,
+            riskFlags
+          } satisfies AuthorityInventoryRow;
+        })
+        .filter((row): row is AuthorityInventoryRow => Boolean(row))
+        .sort((left, right) => {
+          if (left.riskFlags.length !== right.riskFlags.length) {
+            return right.riskFlags.length - left.riskFlags.length;
+          }
+          return left.mint.localeCompare(right.mint);
+        });
+
+      setAuthorityInventory(rows);
+      const rotationCandidates = rows
+        .filter(
+          (row) =>
+            row.hasMintAuthority || row.hasFreezeAuthority || row.hasMetadataAuthority
+        )
+        .map((row) => row.mint);
+      setRotationTargetMints(rotationCandidates.join("\n"));
+      setStatus({
+        severity: "success",
+        message: `Scanned ${rows.length} mints. Found ${rotationCandidates.length} with wallet authority.`
+      });
+    } catch (unknownError) {
+      setAuthorityInventory([]);
+      setStatus({
+        severity: "error",
+        message:
+          unknownError instanceof Error
+            ? unknownError.message
+            : "Failed to scan authority inventory."
+      });
+    } finally {
+      setAuthorityInventoryLoading(false);
+    }
+  };
+
+  const exportAuthorityInventoryCsv = () => {
+    if (authorityInventory.length === 0) {
+      setStatus({
+        severity: "info",
+        message: "Run authority inventory scan before exporting CSV."
+      });
+      return;
+    }
+
+    const csvEscape = (value: string) => `"${value.replace(/"/g, "\"\"")}"`;
+    const header = [
+      "mint",
+      "program_id",
+      "decimals",
+      "supply",
+      "mint_authority",
+      "freeze_authority",
+      "metadata_update_authority",
+      "metadata_uri",
+      "metadata_mutable",
+      "has_mint_authority",
+      "has_freeze_authority",
+      "has_metadata_authority",
+      "risk_flags"
+    ];
+    const lines = authorityInventory.map((row) =>
+      [
+        row.mint,
+        row.programId,
+        String(row.decimals),
+        row.supplyLabel,
+        row.mintAuthority || "",
+        row.freezeAuthority || "",
+        row.metadataUpdateAuthority || "",
+        row.metadataUri || "",
+        row.metadataMutable === null ? "" : String(row.metadataMutable),
+        String(row.hasMintAuthority),
+        String(row.hasFreezeAuthority),
+        String(row.hasMetadataAuthority),
+        row.riskFlags.join(" | ")
+      ]
+        .map(csvEscape)
+        .join(",")
+    );
+    const csvContent = [header.join(","), ...lines].join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = window.URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `authority-inventory-${Date.now()}.csv`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    window.URL.revokeObjectURL(url);
+
+    setStatus({
+      severity: "success",
+      message: `Exported ${authorityInventory.length} rows to CSV.`
+    });
+  };
+
+  const runBulkAuthorityRotation = async () => {
+    if (!publicKey) {
+      setStatus({ severity: "error", message: "Connect your wallet first." });
+      return;
+    }
+
+    setIsSubmitting(true);
+    setStatus(null);
+    try {
+      const nextAuthority = new PublicKey(rotationNewAuthority.trim());
+      let targetMints = parseMintAddressesInput(rotationTargetMints);
+      if (targetMints.length === 0) {
+        targetMints = authorityInventory
+          .filter(
+            (row) =>
+              row.hasMintAuthority || row.hasFreezeAuthority || row.hasMetadataAuthority
+          )
+          .map((row) => row.mint);
+      }
+      if (targetMints.length === 0) {
+        throw new Error("No target mints provided for rotation.");
+      }
+      if (
+        !rotateMintAuthorityEnabled &&
+        !rotateFreezeAuthorityEnabled &&
+        !rotateMetadataAuthorityEnabled
+      ) {
+        throw new Error("Enable at least one authority type to rotate.");
+      }
+
+      const targetMintPubkeys = targetMints.map((mint) => new PublicKey(mint));
+      const mintInfoChunks: Awaited<ReturnType<typeof connection.getMultipleAccountsInfo>>[] =
+        [];
+      for (let index = 0; index < targetMintPubkeys.length; index += 100) {
+        mintInfoChunks.push(
+          await connection.getMultipleAccountsInfo(
+            targetMintPubkeys.slice(index, index + 100),
+            "confirmed"
+          )
+        );
+      }
+      const mintInfos = mintInfoChunks.flat();
+
+      const metadataPdas = targetMintPubkeys.map((mint) => findMetadataPda(mint));
+      const metadataInfoChunks: Awaited<
+        ReturnType<typeof connection.getMultipleAccountsInfo>
+      >[] = [];
+      for (let index = 0; index < metadataPdas.length; index += 100) {
+        metadataInfoChunks.push(
+          await connection.getMultipleAccountsInfo(
+            metadataPdas.slice(index, index + 100),
+            "confirmed"
+          )
+        );
+      }
+      const metadataInfos = metadataInfoChunks.flat();
+
+      const walletAddress = publicKey.toBase58();
+      const instructions: TransactionInstruction[] = [];
+      let mintAuthorityUpdates = 0;
+      let freezeAuthorityUpdates = 0;
+      let metadataAuthorityUpdates = 0;
+
+      targetMints.forEach((mint, index) => {
+        const mintInfo = mintInfos[index];
+        if (
+          !mintInfo ||
+          mintInfo.data.length < 82 ||
+          (!mintInfo.owner.equals(TOKEN_PROGRAM_ID) &&
+            !mintInfo.owner.equals(TOKEN_2022_PROGRAM_ID))
+        ) {
+          return;
+        }
+        const mintPublicKey = new PublicKey(mint);
+        const parsedMint = parseMintAccountCore(mintInfo.data);
+
+        if (
+          rotateMintAuthorityEnabled &&
+          parsedMint.mintAuthority === walletAddress
+        ) {
+          instructions.push(
+            createSetAuthorityInstruction(
+              mintPublicKey,
+              publicKey,
+              AuthorityType.MintTokens,
+              nextAuthority,
+              [],
+              mintInfo.owner
+            )
+          );
+          mintAuthorityUpdates += 1;
+        }
+
+        if (
+          rotateFreezeAuthorityEnabled &&
+          parsedMint.freezeAuthority === walletAddress
+        ) {
+          instructions.push(
+            createSetAuthorityInstruction(
+              mintPublicKey,
+              publicKey,
+              AuthorityType.FreezeAccount,
+              nextAuthority,
+              [],
+              mintInfo.owner
+            )
+          );
+          freezeAuthorityUpdates += 1;
+        }
+
+        if (rotateMetadataAuthorityEnabled) {
+          const metadataInfo = metadataInfos[index];
+          if (
+            metadataInfo &&
+            metadataInfo.owner.equals(TOKEN_METADATA_PROGRAM_ID)
+          ) {
+            try {
+              const [metadata] = getMetadataAccountDataSerializer().deserialize(
+                metadataInfo.data
+              );
+              if (String(metadata.updateAuthority) === walletAddress) {
+                const data =
+                  getUpdateMetadataAccountV2InstructionDataSerializer().serialize({
+                    data: null,
+                    newUpdateAuthority: umiPublicKey(nextAuthority.toBase58()),
+                    primarySaleHappened: null,
+                    isMutable: null
+                  });
+                instructions.push(
+                  new TransactionInstruction({
+                    programId: TOKEN_METADATA_PROGRAM_ID,
+                    keys: [
+                      {
+                        pubkey: metadataPdas[index],
+                        isSigner: false,
+                        isWritable: true
+                      },
+                      { pubkey: publicKey, isSigner: true, isWritable: false }
+                    ],
+                    data: Buffer.from(data)
+                  })
+                );
+                metadataAuthorityUpdates += 1;
+              }
+            } catch {
+              // Skip malformed metadata account.
+            }
+          }
+        }
+      });
+
+      if (instructions.length === 0) {
+        throw new Error(
+          "No matching authorities found for selected mints and toggles."
+        );
+      }
+
+      const instructionChunks = [];
+      for (let index = 0; index < instructions.length; index += 8) {
+        instructionChunks.push(instructions.slice(index, index + 8));
+      }
+
+      const signatures: string[] = [];
+      for (const instructionChunk of instructionChunks) {
+        const signature = await runWalletTransaction(
+          new Transaction().add(...instructionChunk)
+        );
+        signatures.push(signature);
+      }
+
+      setStatus({
+        severity: "success",
+        message:
+          `Rotated authorities across ${targetMints.length} mint(s): ` +
+          `${mintAuthorityUpdates} mint, ${freezeAuthorityUpdates} freeze, ${metadataAuthorityUpdates} metadata update.`,
+        signature: signatures[0]
+      });
+      void loadAuthorityMints();
+      void scanAuthorityInventory();
+    } catch (unknownError) {
+      setStatus({
+        severity: "error",
+        message:
+          unknownError instanceof Error
+            ? unknownError.message
+            : "Failed to run bulk authority rotation."
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   const runWalletTransaction = async (
     transaction: Transaction,
@@ -1661,6 +2176,198 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
                     ))}
                   </Stack>
                 ) : null}
+              </Stack>
+            </CardContent>
+          </Card>
+
+          <Card variant="outlined" sx={{ borderRadius: 1.5 }}>
+            <CardContent sx={{ p: 1.2 }}>
+              <Stack spacing={1}>
+                <Stack direction="row" justifyContent="space-between" alignItems="center">
+                  <Typography variant="subtitle2">Authority Inventory + Risk Scanner</Typography>
+                  <Stack direction="row" spacing={0.8}>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      onClick={() => {
+                        void scanAuthorityInventory();
+                      }}
+                      disabled={!connected || authorityInventoryLoading}
+                    >
+                      Scan
+                    </Button>
+                    <Button
+                      size="small"
+                      variant="text"
+                      onClick={exportAuthorityInventoryCsv}
+                      disabled={authorityInventory.length === 0}
+                    >
+                      Export CSV
+                    </Button>
+                  </Stack>
+                </Stack>
+                <Typography variant="caption" color="text.secondary">
+                  Scans token + metadata authority exposure and flags high-risk authority retention.
+                </Typography>
+                <TextField
+                  multiline
+                  minRows={4}
+                  size="small"
+                  label="Additional Mint Inputs (optional, one per line)"
+                  value={authorityInventoryInput}
+                  onChange={(event) => {
+                    setAuthorityInventoryInput(event.target.value);
+                  }}
+                  placeholder="Add mint addresses to include in scan."
+                />
+                {authorityInventoryLoading ? (
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <CircularProgress size={16} />
+                    <Typography variant="caption" color="text.secondary">
+                      Scanning authority inventory...
+                    </Typography>
+                  </Stack>
+                ) : null}
+                {authorityInventory.length > 0 ? (
+                  <Stack spacing={0.7}>
+                    {authorityInventory.slice(0, 30).map((row) => (
+                      <Card key={row.mint} variant="outlined" sx={{ borderRadius: 1.1 }}>
+                        <CardContent sx={{ p: 1, "&:last-child": { pb: 1 } }}>
+                          <Stack spacing={0.65}>
+                            <Stack direction="row" justifyContent="space-between" alignItems="center">
+                              <Typography
+                                variant="caption"
+                                sx={{
+                                  fontFamily: "var(--font-mono), monospace",
+                                  wordBreak: "break-all"
+                                }}
+                              >
+                                {row.mint}
+                              </Typography>
+                              <Button
+                                size="small"
+                                href={explorerAddressUrl(row.mint)}
+                                target="_blank"
+                                rel="noreferrer"
+                              >
+                                Explorer
+                              </Button>
+                            </Stack>
+                            <Stack direction="row" spacing={0.6} flexWrap="wrap" useFlexGap>
+                              <Chip
+                                size="small"
+                                variant="outlined"
+                                label={
+                                  row.programId === TOKEN_2022_PROGRAM_ID.toBase58()
+                                    ? "Token-2022"
+                                    : "Token"
+                                }
+                              />
+                              <Chip size="small" variant="outlined" label={`Supply ${row.supplyLabel}`} />
+                              {row.hasMintAuthority ? (
+                                <Chip size="small" color="primary" variant="outlined" label="Mint Auth" />
+                              ) : null}
+                              {row.hasFreezeAuthority ? (
+                                <Chip size="small" color="secondary" variant="outlined" label="Freeze Auth" />
+                              ) : null}
+                              {row.hasMetadataAuthority ? (
+                                <Chip size="small" color="warning" variant="outlined" label="Metadata Auth" />
+                              ) : null}
+                            </Stack>
+                            {row.riskFlags.length > 0 ? (
+                              <Stack direction="row" spacing={0.6} flexWrap="wrap" useFlexGap>
+                                {row.riskFlags.map((flag) => (
+                                  <Chip
+                                    key={`${row.mint}-${flag}`}
+                                    size="small"
+                                    color="error"
+                                    variant="outlined"
+                                    label={flag}
+                                  />
+                                ))}
+                              </Stack>
+                            ) : (
+                              <Typography variant="caption" color="text.secondary">
+                                No immediate authority risk flags.
+                              </Typography>
+                            )}
+                          </Stack>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </Stack>
+                ) : null}
+              </Stack>
+            </CardContent>
+          </Card>
+
+          <Card variant="outlined" sx={{ borderRadius: 1.5 }}>
+            <CardContent sx={{ p: 1.2 }}>
+              <Stack spacing={1}>
+                <Typography variant="subtitle2">Bulk Authority Rotation Wizard</Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Rotate mint/freeze/metadata update authorities to a new authority in batches.
+                </Typography>
+                <TextField
+                  size="small"
+                  label="New Authority Wallet"
+                  value={rotationNewAuthority}
+                  onChange={(event) => {
+                    setRotationNewAuthority(event.target.value);
+                  }}
+                />
+                <Stack direction="row" spacing={0.7} flexWrap="wrap" useFlexGap>
+                  <Chip
+                    size="small"
+                    clickable
+                    variant={rotateMintAuthorityEnabled ? "filled" : "outlined"}
+                    color={rotateMintAuthorityEnabled ? "primary" : "default"}
+                    label="Rotate Mint"
+                    onClick={() => {
+                      setRotateMintAuthorityEnabled((value) => !value);
+                    }}
+                  />
+                  <Chip
+                    size="small"
+                    clickable
+                    variant={rotateFreezeAuthorityEnabled ? "filled" : "outlined"}
+                    color={rotateFreezeAuthorityEnabled ? "secondary" : "default"}
+                    label="Rotate Freeze"
+                    onClick={() => {
+                      setRotateFreezeAuthorityEnabled((value) => !value);
+                    }}
+                  />
+                  <Chip
+                    size="small"
+                    clickable
+                    variant={rotateMetadataAuthorityEnabled ? "filled" : "outlined"}
+                    color={rotateMetadataAuthorityEnabled ? "warning" : "default"}
+                    label="Rotate Metadata"
+                    onClick={() => {
+                      setRotateMetadataAuthorityEnabled((value) => !value);
+                    }}
+                  />
+                </Stack>
+                <TextField
+                  multiline
+                  minRows={6}
+                  size="small"
+                  label="Target Mints (one per line)"
+                  value={rotationTargetMints}
+                  onChange={(event) => {
+                    setRotationTargetMints(event.target.value);
+                  }}
+                  placeholder="Leave empty to use scan-derived authority mints."
+                />
+                <Button
+                  variant="contained"
+                  onClick={() => {
+                    void runBulkAuthorityRotation();
+                  }}
+                  disabled={!connected || isSubmitting}
+                >
+                  Rotate Authorities
+                </Button>
               </Stack>
             </CardContent>
           </Card>

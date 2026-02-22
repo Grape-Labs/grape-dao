@@ -8,7 +8,7 @@ export function middleware(request: NextRequest) {
   const normalizedFirstSegment = firstSegment.toLowerCase();
 
   // Normalize known top-level route casing only; preserve dynamic segments.
-  const shouldNormalizeTopLevel = ["identity", "token", "tokentools"].includes(
+  const shouldNormalizeTopLevel = ["identity", "token", "tokentools", "nft"].includes(
     normalizedFirstSegment
   );
 

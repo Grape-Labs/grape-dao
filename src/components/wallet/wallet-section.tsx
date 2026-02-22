@@ -84,9 +84,14 @@ export function WalletSection() {
                   and account lifecycle controls.
                 </Typography>
                 <Box mt={1.1}>
-                  <Button variant="outlined" size="small" href="/token">
-                    Open Token Tools
-                  </Button>
+                  <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+                    <Button variant="outlined" size="small" href="/token">
+                      Open Token Tools
+                    </Button>
+                    <Button variant="outlined" size="small" href="/nft">
+                      Open NFT Tools
+                    </Button>
+                  </Stack>
                 </Box>
               </Box>
 

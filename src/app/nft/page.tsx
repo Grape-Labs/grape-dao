@@ -1,15 +1,15 @@
 import type { Metadata } from "next";
 import { grapeLinks } from "@/lib/grape";
-import { TokenToolsSection } from "@/components/wallet/token-tools-section";
+import { NftToolsSection } from "@/components/wallet/nft-tools-section";
 import { Box, Button, Card, CardContent, Chip, Container, Stack, Typography } from "@mui/material";
 
 export const metadata: Metadata = {
-  title: "Token Tools",
+  title: "NFT Tools",
   description:
-    "Token authority console for create, mint, authority updates, and metadata management on Solana."
+    "NFT management workspace for minting, sending, retangling, and metadata authority operations on Solana."
 };
 
-export default function TokenPage() {
+export default function NftPage() {
   return (
     <Container maxWidth="xl" sx={{ py: { xs: 3, md: 6 } }}>
       <Card
@@ -28,10 +28,10 @@ export default function TokenPage() {
               Grape Hub
             </Typography>
             <Typography variant="h1" sx={{ fontSize: { xs: "2rem", md: "2.6rem" }, lineHeight: 1.08 }}>
-              Token Tools
+              NFT Tools
             </Typography>
-            <Typography color="text.secondary" sx={{ maxWidth: 820 }}>
-              Dedicated workspace for token authority and metadata operations with your connected wallet.
+            <Typography color="text.secondary" sx={{ maxWidth: 860 }}>
+              Dedicated workspace for NFT lifecycle operations: mint, send, retangle into new mints, and push metadata updates.
             </Typography>
             <Stack direction={{ xs: "column", sm: "row" }} spacing={1.1}>
               <Button variant="contained" href="/">
@@ -40,21 +40,22 @@ export default function TokenPage() {
               <Button variant="outlined" color="primary" href="/identity">
                 Identity
               </Button>
-              <Button variant="outlined" color="primary" href="/nft">
-                NFT Tools
+              <Button variant="outlined" color="primary" href="/token">
+                Token Tools
               </Button>
               <Button variant="outlined" color="secondary" href={grapeLinks.docs} target="_blank" rel="noreferrer">
                 Docs
               </Button>
-              <Chip label="Authority + Metadata" variant="outlined" color="secondary" />
+              <Chip label="NFT Authority + Metadata" variant="outlined" color="secondary" />
             </Stack>
           </Stack>
         </CardContent>
       </Card>
 
       <Box mt={3}>
-        <TokenToolsSection />
+        <NftToolsSection />
       </Box>
     </Container>
   );
 }
+
