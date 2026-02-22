@@ -18,7 +18,7 @@ This UI combines a product landing experience with a dedicated operational Ident
 - Hero with product positioning and external links:
   - Docs: `https://grape-governance.gitbook.io/`
   - Discord: `https://discord.gg/grapedao`
-- `Grape Protocol` section with cards for:
+- `Grape DAO` section with cards for:
   - OG Reputation Spaces
   - Grape Verification
   - Grape Access
