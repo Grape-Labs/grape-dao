@@ -276,7 +276,23 @@ export default function Home() {
                           SDK / NPM
                         </Button>
                       ) : null}
+                      {product.requestBotFromDao ? (
+                        <Button
+                          variant="outlined"
+                          color="secondary"
+                          href={grapeLinks.discord}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          Request Discord Bot
+                        </Button>
+                      ) : null}
                     </Stack>
+                    {product.requestBotFromDao ? (
+                      <Typography variant="caption" color="text.secondary">
+                        Bot invite links are private. Reach out to the Grape DAO for setup.
+                      </Typography>
+                    ) : null}
                   </Stack>
                 </CardContent>
               </Card>
