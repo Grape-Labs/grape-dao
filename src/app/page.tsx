@@ -164,7 +164,7 @@ export default function Home() {
                   >
                     Join Discord
                   </Button>
-                  <Button variant="outlined" color="primary" href="/Identity">
+                  <Button variant="outlined" color="primary" href="/identity">
                     Identity
                   </Button>
                 </Stack>
