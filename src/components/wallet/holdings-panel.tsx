@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import type { ParsedAccountData } from "@solana/web3.js";
 import { PublicKey } from "@solana/web3.js";
+import { MPL_TOKEN_METADATA_PROGRAM_ID } from "@metaplex-foundation/mpl-token-metadata";
 import {
   Alert,
   Box,
@@ -18,11 +19,16 @@ import {
   DialogTitle,
   Link,
   Stack,
+  Tab,
+  Tabs,
   Typography
 } from "@mui/material";
 import type { WalletHoldingsState } from "@/hooks/use-wallet-holdings";
 import { useTokenMetadata } from "@/hooks/use-token-metadata";
 import type { TokenHolding } from "@/hooks/use-wallet-holdings";
+
+const TOKEN_METADATA_PROGRAM_ID = new PublicKey(MPL_TOKEN_METADATA_PROGRAM_ID);
+const METADATA_SEED = new TextEncoder().encode("metadata");
 
 function shortenAddress(address: string) {
   return `${address.slice(0, 6)}...${address.slice(-6)}`;
@@ -39,6 +45,27 @@ type MintDetails = {
   mintAuthority: string | null;
   freezeAuthority: string | null;
   isInitialized: boolean;
+};
+
+type MetadataJsonAttribute = {
+  traitType: string;
+  value: string;
+};
+
+type MetaplexMetadata = {
+  metadataPda: string;
+  updateAuthority: string;
+  name: string;
+  symbol: string;
+  uri: string;
+  sellerFeeBasisPoints: number;
+  jsonName: string | null;
+  jsonSymbol: string | null;
+  jsonDescription: string | null;
+  jsonImage: string | null;
+  jsonExternalUrl: string | null;
+  jsonCollection: string | null;
+  jsonAttributes: MetadataJsonAttribute[];
 };
 
 function formatTokenUnits(rawAmount: string, decimals: number) {
@@ -58,6 +85,118 @@ function formatMintAddressLink(address: string) {
   return `https://explorer.solana.com/address/${address}?cluster=mainnet`;
 }
 
+function findMetadataPda(mint: PublicKey) {
+  return PublicKey.findProgramAddressSync(
+    [METADATA_SEED, TOKEN_METADATA_PROGRAM_ID.toBytes(), mint.toBytes()],
+    TOKEN_METADATA_PROGRAM_ID
+  )[0];
+}
+
+function readBorshString(data: Uint8Array, offset: number) {
+  if (offset + 4 > data.length) {
+    throw new Error("Invalid metadata account layout.");
+  }
+
+  const length = new DataView(
+    data.buffer,
+    data.byteOffset + offset,
+    4
+  ).getUint32(0, true);
+  const valueOffset = offset + 4;
+  const endOffset = valueOffset + length;
+  if (endOffset > data.length) {
+    throw new Error("Invalid metadata account string length.");
+  }
+
+  const value = new TextDecoder()
+    .decode(data.slice(valueOffset, endOffset))
+    .replace(/\0/g, "")
+    .trim();
+
+  return { value, nextOffset: endOffset };
+}
+
+function parseMetadataAccountData(data: Uint8Array) {
+  let offset = 0;
+
+  // key enum
+  offset += 1;
+
+  const updateAuthority = new PublicKey(data.slice(offset, offset + 32)).toBase58();
+  offset += 32;
+
+  // mint pubkey
+  offset += 32;
+
+  const nameField = readBorshString(data, offset);
+  offset = nameField.nextOffset;
+  const symbolField = readBorshString(data, offset);
+  offset = symbolField.nextOffset;
+  const uriField = readBorshString(data, offset);
+  offset = uriField.nextOffset;
+
+  if (offset + 2 > data.length) {
+    throw new Error("Invalid metadata account seller fee field.");
+  }
+  const sellerFeeBasisPoints = new DataView(
+    data.buffer,
+    data.byteOffset + offset,
+    2
+  ).getUint16(0, true);
+
+  return {
+    updateAuthority,
+    name: nameField.value,
+    symbol: symbolField.value,
+    uri: uriField.value,
+    sellerFeeBasisPoints
+  };
+}
+
+function resolveMetadataUri(uri: string) {
+  const normalized = uri.replace(/\0/g, "").trim();
+  if (!normalized) {
+    return "";
+  }
+  if (normalized.startsWith("ipfs://")) {
+    return `https://ipfs.io/ipfs/${normalized.slice("ipfs://".length)}`;
+  }
+  return normalized;
+}
+
+function asNonEmptyString(value: unknown) {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function parseMetadataAttributes(value: unknown): MetadataJsonAttribute[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((entry) => {
+      if (!entry || typeof entry !== "object") {
+        return null;
+      }
+      const traitType = asNonEmptyString(
+        (entry as { trait_type?: unknown }).trait_type
+      );
+      const rawValue = (entry as { value?: unknown }).value;
+      if (!traitType || rawValue === null || rawValue === undefined) {
+        return null;
+      }
+      return {
+        traitType,
+        value: String(rawValue)
+      };
+    })
+    .filter((entry): entry is MetadataJsonAttribute => Boolean(entry));
+}
+
 export function HoldingsPanel({ holdingsState }: HoldingsPanelProps) {
   const { connection } = useConnection();
   const { publicKey, connected } = useWallet();
@@ -69,9 +208,27 @@ export function HoldingsPanel({ holdingsState }: HoldingsPanelProps) {
   const [mintDetails, setMintDetails] = useState<MintDetails | null>(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [detailsError, setDetailsError] = useState<string | null>(null);
+  const [metaplexMetadata, setMetaplexMetadata] =
+    useState<MetaplexMetadata | null>(null);
+  const [metaplexError, setMetaplexError] = useState<string | null>(null);
+  const [holdingsTab, setHoldingsTab] = useState<"tokens" | "nfts">("tokens");
   const selectedTokenMetadata = selectedToken
     ? getTokenMetadata(selectedToken.mint)
     : null;
+  const potentialNfts = useMemo(
+    () =>
+      holdings.tokens.filter(
+        (token) => token.decimals === 0 && token.rawAmount === "1"
+      ),
+    [holdings.tokens]
+  );
+  const fungibleTokens = useMemo(
+    () =>
+      holdings.tokens.filter(
+        (token) => !(token.decimals === 0 && token.rawAmount === "1")
+      ),
+    [holdings.tokens]
+  );
 
   const updatedAtLabel = useMemo(() => {
     if (!updatedAt) {
@@ -91,14 +248,19 @@ export function HoldingsPanel({ holdingsState }: HoldingsPanelProps) {
       if (!selectedToken) {
         setMintDetails(null);
         setDetailsError(null);
+        setMetaplexMetadata(null);
+        setMetaplexError(null);
         setDetailsLoading(false);
         return;
       }
 
       setDetailsLoading(true);
       setDetailsError(null);
+      setMetaplexMetadata(null);
+      setMetaplexError(null);
+      const mintPublicKey = new PublicKey(selectedToken.mint);
+
       try {
-        const mintPublicKey = new PublicKey(selectedToken.mint);
         const mintInfoResponse = await connection.getParsedAccountInfo(
           mintPublicKey,
           "confirmed"
@@ -153,6 +315,99 @@ export function HoldingsPanel({ holdingsState }: HoldingsPanelProps) {
             ? unknownError.message
             : "Unable to load token details."
         );
+      }
+
+      try {
+        const metadataPda = findMetadataPda(mintPublicKey);
+        const metadataAccountInfo = await connection.getAccountInfo(
+          metadataPda,
+          "confirmed"
+        );
+
+        if (!metadataAccountInfo) {
+          if (!cancelled) {
+            setMetaplexMetadata(null);
+          }
+        } else {
+          const parsedMetadata = parseMetadataAccountData(metadataAccountInfo.data);
+          const resolvedMetadataUri = resolveMetadataUri(parsedMetadata.uri);
+
+          let jsonName: string | null = null;
+          let jsonSymbol: string | null = null;
+          let jsonDescription: string | null = null;
+          let jsonImage: string | null = null;
+          let jsonExternalUrl: string | null = null;
+          let jsonCollection: string | null = null;
+          let jsonAttributes: MetadataJsonAttribute[] = [];
+
+          if (resolvedMetadataUri) {
+            try {
+              const response = await fetch(resolvedMetadataUri, {
+                cache: "force-cache"
+              });
+              if (!response.ok) {
+                throw new Error("Failed to fetch JSON metadata.");
+              }
+              const json = (await response.json()) as Record<string, unknown>;
+              jsonName = asNonEmptyString(json.name);
+              jsonSymbol = asNonEmptyString(json.symbol);
+              jsonDescription = asNonEmptyString(json.description);
+              jsonExternalUrl = asNonEmptyString(json.external_url);
+              jsonImage = resolveMetadataUri(asNonEmptyString(json.image) || "");
+              jsonAttributes = parseMetadataAttributes(json.attributes);
+
+              const collection = json.collection;
+              if (typeof collection === "string") {
+                jsonCollection = collection;
+              } else if (collection && typeof collection === "object") {
+                const collectionName = asNonEmptyString(
+                  (collection as { name?: unknown }).name
+                );
+                const collectionFamily = asNonEmptyString(
+                  (collection as { family?: unknown }).family
+                );
+                jsonCollection = [collectionName, collectionFamily]
+                  .filter(Boolean)
+                  .join(" | ");
+              }
+            } catch (unknownError) {
+              if (!cancelled) {
+                setMetaplexError(
+                  unknownError instanceof Error
+                    ? unknownError.message
+                    : "Unable to fetch JSON metadata."
+                );
+              }
+            }
+          }
+
+          if (!cancelled) {
+            setMetaplexMetadata({
+              metadataPda: metadataPda.toBase58(),
+              updateAuthority: parsedMetadata.updateAuthority,
+              name: parsedMetadata.name,
+              symbol: parsedMetadata.symbol,
+              uri: resolvedMetadataUri,
+              sellerFeeBasisPoints: parsedMetadata.sellerFeeBasisPoints,
+              jsonName,
+              jsonSymbol,
+              jsonDescription,
+              jsonImage,
+              jsonExternalUrl,
+              jsonCollection,
+              jsonAttributes
+            });
+          }
+        }
+      } catch (unknownError) {
+        if (!cancelled) {
+          setMetaplexMetadata(null);
+          setMetaplexError(
+            unknownError instanceof Error
+              ? unknownError.message
+              : "Unable to load Metaplex metadata."
+          );
+        }
       } finally {
         if (!cancelled) {
           setDetailsLoading(false);
@@ -185,7 +440,7 @@ export function HoldingsPanel({ holdingsState }: HoldingsPanelProps) {
         <Divider sx={{ my: 1.5 }} />
         {!connected || !publicKey ? (
           <Typography color="text.secondary">
-            Connect your wallet identity to see SOL and SPL token balances.
+            Connect your wallet identity to see SOL, SPL, and NFT candidate balances.
           </Typography>
         ) : (
           <>
@@ -205,6 +460,7 @@ export function HoldingsPanel({ holdingsState }: HoldingsPanelProps) {
                 })}`}
               />
               <Chip variant="outlined" label={`Token Accounts: ${holdings.tokens.length}`} />
+              <Chip variant="outlined" label={`NFT Candidates: ${potentialNfts.length}`} />
             </Stack>
 
             <Typography variant="caption" color="text.secondary" display="block" mt={1.2}>
@@ -223,58 +479,149 @@ export function HoldingsPanel({ holdingsState }: HoldingsPanelProps) {
                   No non-zero SPL token balances found.
                 </Typography>
               ) : (
-                holdings.tokens.slice(0, 20).map((token) => {
-                  const tokenMetadata = getTokenMetadata(token.mint);
-                  return (
-                    <Card
-                      key={token.account}
-                      variant="outlined"
-                      onClick={() => {
-                        setSelectedToken(token);
-                      }}
-                      sx={{
-                        borderRadius: 1.5,
-                        cursor: "pointer",
-                        transition: "border-color 160ms ease, transform 160ms ease",
-                        "&:hover": {
-                          borderColor: "primary.main",
-                          transform: "translateY(-1px)"
-                        }
-                      }}
-                    >
-                      <CardContent
-                        sx={{
-                          p: "10px !important",
-                          display: "flex",
-                          justifyContent: "space-between",
-                          alignItems: "center",
-                          gap: 1
-                        }}
-                      >
-                        <Box>
-                          <Typography variant="body2">
-                            {tokenMetadata?.symbol || shortenAddress(token.mint)}
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary">
-                            {tokenMetadata?.name ? `${tokenMetadata.name} | ` : ""}
-                            ATA: {shortenAddress(token.account)}
-                          </Typography>
-                          <Typography
-                            variant="caption"
-                            color="primary.light"
-                            display="block"
-                            sx={{ mt: 0.3 }}
-                          >
-                            Click for details
-                          </Typography>
-                        </Box>
-                        <Typography sx={{ fontFamily: "var(--font-mono), monospace", fontWeight: 500 }}>
-                          {token.amountLabel}
+                <>
+                  <Tabs
+                    value={holdingsTab}
+                    onChange={(_event, value: "tokens" | "nfts") => {
+                      setHoldingsTab(value);
+                    }}
+                    variant="fullWidth"
+                    sx={{ minHeight: 36, "& .MuiTab-root": { minHeight: 36 } }}
+                  >
+                    <Tab
+                      value="tokens"
+                      label={`Tokens (${fungibleTokens.length})`}
+                    />
+                    <Tab
+                      value="nfts"
+                      label={`NFTs (${potentialNfts.length})`}
+                    />
+                  </Tabs>
+
+                  {holdingsTab === "nfts" ? (
+                    <>
+                      <Typography variant="caption" color="text.secondary">
+                        Heuristic: token accounts with amount = 1 and decimals = 0.
+                      </Typography>
+                      {potentialNfts.length === 0 ? (
+                        <Typography color="text.secondary" variant="body2">
+                          No NFT candidates detected in SPL token accounts.
                         </Typography>
-                      </CardContent>
-                    </Card>
-                  );
-                })
+                      ) : (
+                        potentialNfts.slice(0, 20).map((token) => {
+                          const tokenMetadata = getTokenMetadata(token.mint);
+                          return (
+                            <Card
+                              key={token.account}
+                              variant="outlined"
+                              onClick={() => {
+                                setSelectedToken(token);
+                              }}
+                              sx={{
+                                borderRadius: 1.5,
+                                cursor: "pointer",
+                                transition: "border-color 160ms ease, transform 160ms ease",
+                                "&:hover": {
+                                  borderColor: "primary.main",
+                                  transform: "translateY(-1px)"
+                                }
+                              }}
+                            >
+                              <CardContent
+                                sx={{
+                                  p: "10px !important",
+                                  display: "flex",
+                                  justifyContent: "space-between",
+                                  alignItems: "center",
+                                  gap: 1
+                                }}
+                              >
+                                <Box>
+                                  <Typography variant="body2">
+                                    {tokenMetadata?.name ||
+                                      tokenMetadata?.symbol ||
+                                      shortenAddress(token.mint)}
+                                  </Typography>
+                                  <Typography variant="caption" color="text.secondary">
+                                    Mint: {shortenAddress(token.mint)}
+                                  </Typography>
+                                  <Typography
+                                    variant="caption"
+                                    color="primary.light"
+                                    display="block"
+                                    sx={{ mt: 0.3 }}
+                                  >
+                                    Click for NFT details
+                                  </Typography>
+                                </Box>
+                                <Chip size="small" variant="outlined" label="NFT Candidate" />
+                              </CardContent>
+                            </Card>
+                          );
+                        })
+                      )}
+                    </>
+                  ) : fungibleTokens.length === 0 ? (
+                    <Typography color="text.secondary" variant="body2">
+                      No fungible token balances detected.
+                    </Typography>
+                  ) : (
+                    fungibleTokens.slice(0, 20).map((token) => {
+                      const tokenMetadata = getTokenMetadata(token.mint);
+                      return (
+                        <Card
+                          key={token.account}
+                          variant="outlined"
+                          onClick={() => {
+                            setSelectedToken(token);
+                          }}
+                          sx={{
+                            borderRadius: 1.5,
+                            cursor: "pointer",
+                            transition: "border-color 160ms ease, transform 160ms ease",
+                            "&:hover": {
+                              borderColor: "primary.main",
+                              transform: "translateY(-1px)"
+                            }
+                          }}
+                        >
+                          <CardContent
+                            sx={{
+                              p: "10px !important",
+                              display: "flex",
+                              justifyContent: "space-between",
+                              alignItems: "center",
+                              gap: 1
+                            }}
+                          >
+                            <Box>
+                              <Typography variant="body2">
+                                {tokenMetadata?.symbol || shortenAddress(token.mint)}
+                              </Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                {tokenMetadata?.name ? `${tokenMetadata.name} | ` : ""}
+                                ATA: {shortenAddress(token.account)}
+                              </Typography>
+                              <Typography
+                                variant="caption"
+                                color="primary.light"
+                                display="block"
+                                sx={{ mt: 0.3 }}
+                              >
+                                Click for details
+                              </Typography>
+                            </Box>
+                            <Typography
+                              sx={{ fontFamily: "var(--font-mono), monospace", fontWeight: 500 }}
+                            >
+                              {token.amountLabel}
+                            </Typography>
+                          </CardContent>
+                        </Card>
+                      );
+                    })
+                  )}
+                </>
               )}
             </Box>
           </>
@@ -433,6 +780,123 @@ export function HoldingsPanel({ holdingsState }: HoldingsPanelProps) {
               >
                 Close Authority: {selectedToken.closeAuthority ?? "None"}
               </Typography>
+
+              <Divider />
+              <Typography variant="caption" color="text.secondary">
+                On-chain Metaplex Metadata
+              </Typography>
+              {detailsLoading ? (
+                <Typography variant="body2" color="text.secondary">
+                  Loading metadata account...
+                </Typography>
+              ) : null}
+              {metaplexError ? <Alert severity="warning">{metaplexError}</Alert> : null}
+              {metaplexMetadata ? (
+                <Stack spacing={0.85}>
+                  <Typography
+                    variant="body2"
+                    sx={{ wordBreak: "break-all", fontFamily: "var(--font-mono), monospace" }}
+                  >
+                    Metadata PDA: {metaplexMetadata.metadataPda}
+                  </Typography>
+                  <Link
+                    href={formatMintAddressLink(metaplexMetadata.metadataPda)}
+                    target="_blank"
+                    rel="noreferrer"
+                    underline="hover"
+                  >
+                    Metadata Account on Explorer
+                  </Link>
+                  <Typography variant="body2">
+                    On-chain Name/Symbol: {metaplexMetadata.name || "Unknown"} /{" "}
+                    {metaplexMetadata.symbol || "Unknown"}
+                  </Typography>
+                  <Typography variant="body2">
+                    Royalty (seller fee): {metaplexMetadata.sellerFeeBasisPoints} bps
+                  </Typography>
+                  <Typography
+                    variant="body2"
+                    sx={{ wordBreak: "break-all", fontFamily: "var(--font-mono), monospace" }}
+                  >
+                    Update Authority: {metaplexMetadata.updateAuthority}
+                  </Typography>
+                  {metaplexMetadata.uri ? (
+                    <Link
+                      href={metaplexMetadata.uri}
+                      target="_blank"
+                      rel="noreferrer"
+                      underline="hover"
+                      sx={{ wordBreak: "break-all" }}
+                    >
+                      {metaplexMetadata.uri}
+                    </Link>
+                  ) : (
+                    <Typography variant="body2" color="text.secondary">
+                      No URI set on metadata account.
+                    </Typography>
+                  )}
+
+                  {metaplexMetadata.jsonImage ? (
+                    <Box
+                      component="img"
+                      src={metaplexMetadata.jsonImage}
+                      alt={`${metaplexMetadata.jsonSymbol || metaplexMetadata.symbol || "token"} image`}
+                      sx={{
+                        width: 84,
+                        height: 84,
+                        borderRadius: 1.1,
+                        border: "1px solid",
+                        borderColor: "divider",
+                        objectFit: "cover"
+                      }}
+                    />
+                  ) : null}
+
+                  {metaplexMetadata.jsonName || metaplexMetadata.jsonSymbol ? (
+                    <Typography variant="body2">
+                      JSON Name/Symbol: {metaplexMetadata.jsonName || "Unknown"} /{" "}
+                      {metaplexMetadata.jsonSymbol || "Unknown"}
+                    </Typography>
+                  ) : null}
+
+                  {metaplexMetadata.jsonCollection ? (
+                    <Typography variant="body2">
+                      Collection: {metaplexMetadata.jsonCollection}
+                    </Typography>
+                  ) : null}
+
+                  {metaplexMetadata.jsonDescription ? (
+                    <Typography variant="body2" color="text.secondary">
+                      {metaplexMetadata.jsonDescription}
+                    </Typography>
+                  ) : null}
+
+                  {metaplexMetadata.jsonExternalUrl ? (
+                    <Link
+                      href={metaplexMetadata.jsonExternalUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      underline="hover"
+                      sx={{ wordBreak: "break-all" }}
+                    >
+                      {metaplexMetadata.jsonExternalUrl}
+                    </Link>
+                  ) : null}
+
+                  {metaplexMetadata.jsonAttributes.length > 0 ? (
+                    <Stack direction="row" spacing={0.8} flexWrap="wrap" useFlexGap>
+                      {metaplexMetadata.jsonAttributes.slice(0, 8).map((attribute) => (
+                        <Chip
+                          key={`${attribute.traitType}:${attribute.value}`}
+                          size="small"
+                          variant="outlined"
+                          label={`${attribute.traitType}: ${attribute.value}`}
+                        />
+                      ))}
+                    </Stack>
+                  ) : null}
+                </Stack>
+              ) : null}
 
               {selectedTokenMetadata?.logoURI ? (
                 <>

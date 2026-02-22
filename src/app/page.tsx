@@ -301,6 +301,31 @@ export default function Home() {
                     strengthen shared attestations, shared reputation context, and
                     reusable governance pathways across ecosystems on Solana.
                   </Typography>
+                  <Card
+                    variant="outlined"
+                    sx={{
+                      borderRadius: 1.8,
+                      background:
+                        "linear-gradient(145deg, rgba(16, 30, 39, 0.92), rgba(11, 22, 29, 0.9))",
+                      borderColor: "divider"
+                    }}
+                  >
+                    <CardContent sx={{ p: 1.3, "&:last-child": { pb: 1.3 } }}>
+                      <Stack spacing={0.7}>
+                        <Typography variant="subtitle2" color="primary.light">
+                          The Grape DAO
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          Verified DAO members use Grape tools in real workflows,
+                          share operational feedback, participate in governance,
+                          and earn rewards for meaningful contributions. That
+                          continuous loop keeps the protocol aligned with real
+                          community needs while strengthening participation and
+                          trust over time.
+                        </Typography>
+                      </Stack>
+                    </CardContent>
+                  </Card>
                   <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
                     <Chip label="Solana Mainnet" variant="outlined" color="secondary" />
                     <Chip label="DAO-native Primitives" variant="outlined" color="secondary" />
