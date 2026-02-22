@@ -48,6 +48,7 @@ import {
   Typography
 } from "@mui/material";
 import type { WalletHoldingsState } from "@/hooks/use-wallet-holdings";
+import { CandyMachineManager } from "@/components/wallet/candy-machine-manager";
 
 type NftManagerProps = {
   holdingsState: WalletHoldingsState;
@@ -1205,6 +1206,33 @@ export function NftManager({ holdingsState }: NftManagerProps) {
                   Mint NFT
                 </Button>
               </Stack>
+            </AccordionDetails>
+          </Accordion>
+
+          <Accordion
+            expanded={expandedTool === "candy"}
+            onChange={(_event, isExpanded) => {
+              setExpandedTool(isExpanded ? "candy" : false);
+            }}
+            disableGutters
+            sx={{
+              bgcolor: "transparent",
+              border: "1px solid",
+              borderColor: "divider",
+              borderRadius: "8px !important"
+            }}
+          >
+            <AccordionSummary
+              expandIcon={
+                <Typography color="text.secondary">
+                  {expandedTool === "candy" ? "−" : "+"}
+                </Typography>
+              }
+            >
+              <Typography variant="subtitle2">Candy Machine (Create + Claim)</Typography>
+            </AccordionSummary>
+            <AccordionDetails sx={{ pt: 0.5 }}>
+              <CandyMachineManager onRefreshHoldings={refresh} />
             </AccordionDetails>
           </Accordion>
 
