@@ -88,7 +88,7 @@ export default function Home() {
                   <Chip label="Mainnet Live" color="primary" variant="outlined" />
                 </Stack>
                 <Stack direction={{ xs: "column", md: "row" }} spacing={1}>
-                  <Chip label="Programs: 3" variant="outlined" color="secondary" />
+                  <Chip label="Programs: 4" variant="outlined" color="secondary" />
                   <Chip label="SPL Governance UI" variant="outlined" color="secondary" />
                   <Chip label="Wallet: Transfer / Burn / Close" variant="outlined" color="secondary" />
                 </Stack>
@@ -113,7 +113,12 @@ export default function Home() {
         </Stack>
         <Grid container spacing={2} mt={0.5}>
           {grapeProducts.map((product, index) => (
-            <Grid key={product.name} item xs={12} md={6}>
+            <Grid
+              key={product.name}
+              item
+              xs={12}
+              md={product.name === "Governance UI" ? 12 : 6}
+            >
               <Card
                 className="fx-enter fx-card fx-shell"
                 sx={{

@@ -22,6 +22,7 @@ This UI combines a product landing experience with an operational Solana Wallet 
   - OG Reputation Spaces
   - Grape Verification
   - Grape Access
+  - GSPL Directory
   - Governance UI
 - Live Solana signals panel:
   - TPS

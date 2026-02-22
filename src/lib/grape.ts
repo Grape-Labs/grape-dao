@@ -42,6 +42,15 @@ export const grapeProducts: GrapeProduct[] = [
     logo: grapeAvatar
   },
   {
+    name: "GSPL Directory",
+    description:
+      "Composable parent/child, DAO-controlled directory listings for governance ecosystems.",
+    programId: "GovyJPza6EV6srUcmwA1vS3EmWGdLSkkDafRE54X1Dir",
+    href: "https://github.com/Grape-Labs/grape-governance-directory",
+    ctaLabel: "View GSPL Repo",
+    logo: governanceAvatar
+  },
+  {
     name: "Governance UI",
     description:
       "SPL Governance interface and workflows for DAO operations and participation.",
