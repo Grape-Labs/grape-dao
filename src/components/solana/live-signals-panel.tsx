@@ -124,14 +124,27 @@ export function LiveSignalsPanel() {
         <Stack spacing={1.35}>
           <Stack direction="row" justifyContent="space-between" alignItems="center">
             <Typography variant="subtitle2">Live Solana Signals</Typography>
-            <Box className="fx-bars">
-              <span />
-              <span />
-              <span />
-              <span />
-              <span />
-              <span />
-              <span />
+            <Box className="fx-wave" aria-label="Live waveform">
+              <svg viewBox="0 0 200 24" preserveAspectRatio="none">
+                <path
+                  className="secondary"
+                  d="M0 12 C8 5 16 19 24 12 C32 5 40 19 48 12 C56 5 64 19 72 12 C80 5 88 19 96 12 C104 5 112 19 120 12 C128 5 136 19 144 12 C152 5 160 19 168 12 C176 5 184 19 192 12 C196 10 198 11 200 12"
+                />
+                <path
+                  className="primary"
+                  d="M0 12 C8 5 16 19 24 12 C32 5 40 19 48 12 C56 5 64 19 72 12 C80 5 88 19 96 12 C104 5 112 19 120 12 C128 5 136 19 144 12 C152 5 160 19 168 12 C176 5 184 19 192 12 C196 10 198 11 200 12"
+                />
+              </svg>
+              <svg viewBox="0 0 200 24" preserveAspectRatio="none">
+                <path
+                  className="secondary"
+                  d="M0 12 C8 5 16 19 24 12 C32 5 40 19 48 12 C56 5 64 19 72 12 C80 5 88 19 96 12 C104 5 112 19 120 12 C128 5 136 19 144 12 C152 5 160 19 168 12 C176 5 184 19 192 12 C196 10 198 11 200 12"
+                />
+                <path
+                  className="primary"
+                  d="M0 12 C8 5 16 19 24 12 C32 5 40 19 48 12 C56 5 64 19 72 12 C80 5 88 19 96 12 C104 5 112 19 120 12 C128 5 136 19 144 12 C152 5 160 19 168 12 C176 5 184 19 192 12 C196 10 198 11 200 12"
+                />
+              </svg>
             </Box>
           </Stack>
 

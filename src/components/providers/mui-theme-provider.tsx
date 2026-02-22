@@ -172,28 +172,42 @@ export function MuiThemeProvider({ children }: MuiThemeProviderProps) {
             filter: "blur(32px)",
             pointerEvents: "none"
           },
-          ".fx-bars": {
-            display: "flex",
-            gap: "4px",
-            alignItems: "flex-end",
-            height: "22px"
+          ".fx-wave": {
+            position: "relative",
+            width: "124px",
+            height: "24px",
+            borderRadius: "999px",
+            border: "1px solid rgba(120, 183, 255, 0.25)",
+            overflow: "hidden",
+            background: "rgba(8, 15, 19, 0.76)"
           },
-          ".fx-bars span": {
-            width: "5px",
-            height: "22px",
-            borderRadius: "3px",
-            background:
-              "linear-gradient(180deg, rgba(109, 180, 255, 0.95), rgba(95, 211, 162, 0.75))",
-            transformOrigin: "center bottom",
-            animation: "fxEqualizer 1.2s ease-in-out infinite"
+          ".fx-wave svg": {
+            position: "absolute",
+            inset: 0,
+            width: "200%",
+            height: "100%"
           },
-          ".fx-bars span:nth-of-type(1)": { animationDelay: "0ms" },
-          ".fx-bars span:nth-of-type(2)": { animationDelay: "80ms" },
-          ".fx-bars span:nth-of-type(3)": { animationDelay: "160ms" },
-          ".fx-bars span:nth-of-type(4)": { animationDelay: "240ms" },
-          ".fx-bars span:nth-of-type(5)": { animationDelay: "320ms" },
-          ".fx-bars span:nth-of-type(6)": { animationDelay: "400ms" },
-          ".fx-bars span:nth-of-type(7)": { animationDelay: "480ms" },
+          ".fx-wave svg:nth-of-type(1)": {
+            animation: "fxWaveShiftA 2.6s linear infinite"
+          },
+          ".fx-wave svg:nth-of-type(2)": {
+            opacity: 0.6,
+            animation: "fxWaveShiftB 3.8s linear infinite"
+          },
+          ".fx-wave path": {
+            fill: "none",
+            strokeLinecap: "round"
+          },
+          ".fx-wave path.primary": {
+            stroke: "rgba(157, 255, 215, 0.95)",
+            strokeWidth: 2.2,
+            filter: "drop-shadow(0 0 4px rgba(86, 242, 179, 0.4))",
+            animation: "fxWaveGlow 2.2s ease-in-out infinite"
+          },
+          ".fx-wave path.secondary": {
+            stroke: "rgba(120, 183, 255, 0.85)",
+            strokeWidth: 1.6
+          },
           ".fx-pulse": {
             animation: "fxPulse 3.4s ease-in-out infinite"
           },
@@ -229,30 +243,31 @@ export function MuiThemeProvider({ children }: MuiThemeProviderProps) {
               transform: "translateX(120%)"
             }
           },
-          "@keyframes fxEqualizer": {
+          "@keyframes fxWaveShiftA": {
             "0%": {
-              transform: "scaleY(0.26)",
-              opacity: 0.48
-            },
-            "20%": {
-              transform: "scaleY(0.9)",
-              opacity: 0.92
-            },
-            "40%": {
-              transform: "scaleY(0.42)",
-              opacity: 0.62
-            },
-            "60%": {
-              transform: "scaleY(1)",
-              opacity: 1
-            },
-            "80%": {
-              transform: "scaleY(0.52)",
-              opacity: 0.7
+              transform: "translateX(0)"
             },
             "100%": {
-              transform: "scaleY(0.26)",
-              opacity: 0.48
+              transform: "translateX(-50%)"
+            }
+          },
+          "@keyframes fxWaveShiftB": {
+            "0%": {
+              transform: "translateX(0)"
+            },
+            "100%": {
+              transform: "translateX(-50%)"
+            }
+          },
+          "@keyframes fxWaveGlow": {
+            "0%": {
+              opacity: 0.78
+            },
+            "50%": {
+              opacity: 1
+            },
+            "100%": {
+              opacity: 0.78
             }
           },
           "@keyframes adminBgShift": {
