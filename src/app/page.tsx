@@ -325,7 +325,7 @@ export default function Home() {
                           Verified DAO members use Grape tools in real workflows,
                           share operational feedback, participate in governance,
                           and earn rewards for meaningful contributions. That
-                          continuous loop keeps the protocol aligned with real
+                          continuous loop keeps the tooling aligned with real
                           community needs while strengthening participation and
                           trust over time.
                         </Typography>
