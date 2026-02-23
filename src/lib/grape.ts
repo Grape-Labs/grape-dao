@@ -26,7 +26,7 @@ export const grapeProducts: GrapeProduct[] = [
     programId: "V1NE6WCWJPRiVFq5DtaN8p87M9DmmUd2zQuVbvLgQwX",
     href: "https://vine.governance.so",
     ctaLabel: "Open OG Reputation Space",
-    sdkHref: "https://github.com/Grape-Labs/vine-reputation-npm",
+    sdkHref: "https://www.npmjs.com/package/@grapenpm/vine-reputation-client",
     requestBotFromDao: true,
     logo: ogAvatar
   },
@@ -37,7 +37,7 @@ export const grapeProducts: GrapeProduct[] = [
     programId: "VrFyyRxPoyWxpABpBXU4YUCCF9p8giDSJUv2oXfDr5q",
     href: "https://verification.governance.so/",
     ctaLabel: "Open Grape Verification",
-    sdkHref: "https://github.com/Grape-Labs/grape-verification-npm",
+    sdkHref: "https://www.npmjs.com/package/@grapenpm/grape-verification-registry",
     requestBotFromDao: true,
     logo: verificationAvatar
   },
@@ -48,7 +48,7 @@ export const grapeProducts: GrapeProduct[] = [
     programId: "GPASSzQQF1H8cdj5pUwFkeYEE4VdMQtCrYtUaMXvPz48",
     href: "https://access.governance.so/",
     ctaLabel: "Open Grape Access",
-    sdkHref: "https://github.com/Grape-Labs/grape-gating-protocol",
+    sdkHref: "https://www.npmjs.com/package/@grapenpm/grape-access-sdk",
     logo: grapeAvatar
   },
   {
