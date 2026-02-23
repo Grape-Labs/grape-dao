@@ -243,6 +243,9 @@ export default function Home() {
                   <Button variant="outlined" color="primary" href="/nft">
                     NFT Tools
                   </Button>
+                  <Button variant="outlined" color="primary" href="/claim">
+                    Claim
+                  </Button>
                 </Stack>
                 <Stack direction={{ xs: "column", md: "row" }} spacing={1}>
                   <Chip label="Programs: 6" variant="outlined" color="secondary" />

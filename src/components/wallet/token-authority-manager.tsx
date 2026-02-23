@@ -10,6 +10,7 @@ import {
   MINT_SIZE,
   TOKEN_2022_PROGRAM_ID,
   TOKEN_PROGRAM_ID,
+  createAssociatedTokenAccountIdempotentInstruction,
   createAssociatedTokenAccountInstruction,
   createCloseAccountInstruction,
   createInitializeMintCloseAuthorityInstruction,
@@ -41,6 +42,7 @@ import {
   GrapeDistributorClient,
   GRAPE_DISTRIBUTOR_PROGRAM_ID,
   computeLeaf,
+  hashSortedPair,
   verifyMerkleProofSorted
 } from "grape-distributor-sdk";
 import { Buffer } from "buffer";
@@ -70,6 +72,12 @@ type TokenAuthorityManagerProps = {
 type DistributionRecipient = {
   owner: PublicKey;
   amountBaseUnits: bigint;
+};
+
+type DistributorAllocation = {
+  wallet: PublicKey;
+  amount: bigint;
+  index: bigint;
 };
 
 type TokenMetadataTemplate = {
@@ -230,6 +238,23 @@ function parseProofHexInput(input: string) {
   return lines.map((line, index) => parseHex32(line, `Proof line ${index + 1}`));
 }
 
+function toDateTimeLocalInput(unixSeconds: number) {
+  const date = new Date(unixSeconds * 1000);
+  const tzOffsetMs = date.getTimezoneOffset() * 60_000;
+  return new Date(date.getTime() - tzOffsetMs).toISOString().slice(0, 16);
+}
+
+function parseDateTimeLocalToUnix(value: string, label: string) {
+  if (!value.trim()) {
+    throw new Error(`${label} is required.`);
+  }
+  const ms = Date.parse(value);
+  if (Number.isNaN(ms)) {
+    throw new Error(`${label} is invalid.`);
+  }
+  return BigInt(Math.floor(ms / 1000));
+}
+
 function normalizeBaseUrl(value: string) {
   return value.replace(/\/+$/, "");
 }
@@ -274,6 +299,79 @@ function parseDistributionRecipients(
   return recipients;
 }
 
+function parseDistributorAllocationsInput(input: string) {
+  const lines = input
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && !line.startsWith("#"));
+
+  if (lines.length === 0) {
+    throw new Error("Add at least one allocation line.");
+  }
+
+  const allocations: DistributorAllocation[] = lines.map((line, index) => {
+    const parts = line.includes(",")
+      ? line.split(",").map((value) => value.trim())
+      : line.split(/\s+/).map((value) => value.trim());
+    if (parts.length < 2 || !parts[0] || !parts[1]) {
+      throw new Error(
+        `Invalid allocation format on line ${index + 1}. Use wallet,amountBaseUnits.`
+      );
+    }
+
+    const wallet = new PublicKey(parts[0]);
+    const amount = BigInt(parts[1]);
+    if (amount <= 0n) {
+      throw new Error(
+        `Allocation amount must be greater than zero on line ${index + 1}.`
+      );
+    }
+
+    return { wallet, amount, index: BigInt(index) };
+  });
+
+  return allocations;
+}
+
+function buildMerkleRootAndProofs(leaves: Uint8Array[]) {
+  if (leaves.length === 0) {
+    throw new Error("At least one leaf is required.");
+  }
+
+  const levels: Uint8Array[][] = [leaves];
+  while (levels[levels.length - 1].length > 1) {
+    const currentLevel = levels[levels.length - 1];
+    const nextLevel: Uint8Array[] = [];
+    for (let index = 0; index < currentLevel.length; index += 2) {
+      const left = currentLevel[index];
+      const right = currentLevel[index + 1] ?? currentLevel[index];
+      nextLevel.push(hashSortedPair(left, right));
+    }
+    levels.push(nextLevel);
+  }
+
+  const proofs: Uint8Array[][] = leaves.map((_leaf, leafIndex) => {
+    const proof: Uint8Array[] = [];
+    let cursor = leafIndex;
+    for (let level = 0; level < levels.length - 1; level += 1) {
+      const nodes = levels[level];
+      const siblingIndex = cursor ^ 1;
+      proof.push(nodes[siblingIndex] ?? nodes[cursor]);
+      cursor = Math.floor(cursor / 2);
+    }
+    return proof;
+  });
+
+  return {
+    root: levels[levels.length - 1][0],
+    proofs
+  };
+}
+
+function toHexPrefixed(bytes: Uint8Array) {
+  return `0x${Buffer.from(bytes).toString("hex")}`;
+}
+
 function shortenAddress(address: string) {
   return `${address.slice(0, 6)}...${address.slice(-6)}`;
 }
@@ -289,6 +387,109 @@ function parseMintAddressesInput(input: string) {
     unique.add(new PublicKey(mintText).toBase58());
   });
   return Array.from(unique);
+}
+
+function normalizeWalletAddress(value: unknown) {
+  if (typeof value !== "string") {
+    return null;
+  }
+  try {
+    return new PublicKey(value).toBase58();
+  } catch {
+    return null;
+  }
+}
+
+function resolveDistributorClaimPayloadFromManifest(
+  payload: Record<string, unknown>,
+  connectedWallet?: string
+) {
+  const hasDirectClaimShape =
+    typeof payload.mint === "string" &&
+    typeof payload.vault === "string" &&
+    payload.index !== undefined &&
+    payload.amount !== undefined &&
+    Array.isArray(payload.proof);
+
+  if (hasDirectClaimShape) {
+    return {
+      claimPayload: payload,
+      sourceLabel: "Claim package"
+    };
+  }
+
+  const entries: Record<string, unknown>[] = [];
+  const topLevelClaims = Array.isArray(payload.claims) ? payload.claims : [];
+  topLevelClaims.forEach((entry) => {
+    if (!entry || typeof entry !== "object") {
+      return;
+    }
+    const claim = entry as Record<string, unknown>;
+    entries.push({
+      mint: claim.mint ?? payload.mint,
+      vault: claim.vault ?? payload.vault,
+      distributor: claim.distributor ?? payload.distributor,
+      root: claim.root ?? claim.merkleRoot ?? payload.root ?? payload.merkleRoot,
+      index: claim.index,
+      amount: claim.amount,
+      proof: claim.proof,
+      wallet: claim.wallet ?? payload.wallet
+    });
+  });
+
+  const campaigns = Array.isArray(payload.campaigns) ? payload.campaigns : [];
+  campaigns.forEach((campaignEntry) => {
+    if (!campaignEntry || typeof campaignEntry !== "object") {
+      return;
+    }
+    const campaign = campaignEntry as Record<string, unknown>;
+    const claims = Array.isArray(campaign.claims) ? campaign.claims : [];
+    claims.forEach((claimEntry) => {
+      if (!claimEntry || typeof claimEntry !== "object") {
+        return;
+      }
+      const claim = claimEntry as Record<string, unknown>;
+      entries.push({
+        mint: claim.mint ?? campaign.mint,
+        vault: claim.vault ?? campaign.vault,
+        distributor: claim.distributor ?? campaign.distributor,
+        root:
+          claim.root ??
+          claim.merkleRoot ??
+          campaign.root ??
+          campaign.merkleRoot,
+        index: claim.index,
+        amount: claim.amount,
+        proof: claim.proof,
+        wallet: claim.wallet
+      });
+    });
+  });
+
+  if (entries.length === 0) {
+    throw new Error(
+      "Claim package JSON is empty. Provide a direct claim object or manifest with claims."
+    );
+  }
+
+  const normalizedConnectedWallet = normalizeWalletAddress(connectedWallet);
+  if (normalizedConnectedWallet) {
+    const matched = entries.find((entry) => {
+      const claimWallet = normalizeWalletAddress(entry.wallet);
+      return claimWallet === normalizedConnectedWallet;
+    });
+    if (matched) {
+      return {
+        claimPayload: matched,
+        sourceLabel: `Claim manifest loaded (${entries.length} entries, wallet match found)`
+      };
+    }
+  }
+
+  return {
+    claimPayload: entries[0],
+    sourceLabel: `Claim manifest loaded (${entries.length} entries, using first entry)`
+  };
 }
 
 function parseMintAccountCore(data: Uint8Array) {
@@ -392,12 +593,23 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
   const [mintAmount, setMintAmount] = useState("");
   const [distributionMintAddress, setDistributionMintAddress] = useState("");
   const [distributionRecipients, setDistributionRecipients] = useState("");
+  const [distributorWizardMint, setDistributorWizardMint] = useState("");
+  const [distributorWizardClaimant, setDistributorWizardClaimant] = useState("");
+  const [distributorWizardAllocations, setDistributorWizardAllocations] =
+    useState("");
+  const [distributorWizardDistributorPda, setDistributorWizardDistributorPda] =
+    useState("");
+  const [distributorWizardVaultAuthorityPda, setDistributorWizardVaultAuthorityPda] =
+    useState("");
+  const [distributorWizardVaultAta, setDistributorWizardVaultAta] = useState("");
   const [distributorIssueMint, setDistributorIssueMint] = useState("");
   const [distributorIssueVault, setDistributorIssueVault] = useState("");
   const [distributorIssueMerkleRoot, setDistributorIssueMerkleRoot] = useState("");
-  const [distributorIssueStartTs, setDistributorIssueStartTs] = useState("0");
-  const [distributorIssueEndTs, setDistributorIssueEndTs] = useState(
-    "253402300799"
+  const [distributorIssueStartAt, setDistributorIssueStartAt] = useState(() =>
+    toDateTimeLocalInput(Math.floor(Date.now() / 1000))
+  );
+  const [distributorIssueEndAt, setDistributorIssueEndAt] = useState(() =>
+    toDateTimeLocalInput(Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 365)
   );
   const [distributorSetRootDistributor, setDistributorSetRootDistributor] =
     useState("");
@@ -408,6 +620,14 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
   const [distributorClaimAmount, setDistributorClaimAmount] = useState("");
   const [distributorClaimProof, setDistributorClaimProof] = useState("");
   const [distributorClaimRoot, setDistributorClaimRoot] = useState("");
+  const [distributorClaimPackageJson, setDistributorClaimPackageJson] =
+    useState("");
+  const [distributorClaimPackageUrl, setDistributorClaimPackageUrl] =
+    useState("");
+  const [uploadedDistributorClaimPackageUrl, setUploadedDistributorClaimPackageUrl] =
+    useState("");
+  const [isDistributorClaimPackageLoading, setIsDistributorClaimPackageLoading] =
+    useState(false);
   const [distributorClaimVerifyLocal, setDistributorClaimVerifyLocal] =
     useState(true);
 
@@ -1625,6 +1845,153 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
     }
   };
 
+  const deriveDistributorWizardAccounts = () => {
+    setStatus(null);
+    try {
+      const mint = new PublicKey(distributorWizardMint.trim());
+      const [distributor] = distributorClient.findDistributorPda(mint);
+      const [vaultAuthority] = distributorClient.findVaultAuthorityPda(distributor);
+      const vaultAta = getAssociatedTokenAddressSync(
+        mint,
+        vaultAuthority,
+        true,
+        TOKEN_PROGRAM_ID,
+        ASSOCIATED_TOKEN_PROGRAM_ID
+      );
+
+      setDistributorWizardDistributorPda(distributor.toBase58());
+      setDistributorWizardVaultAuthorityPda(vaultAuthority.toBase58());
+      setDistributorWizardVaultAta(vaultAta.toBase58());
+
+      setDistributorIssueMint(mint.toBase58());
+      setDistributorIssueVault(vaultAta.toBase58());
+      setDistributorSetRootDistributor(distributor.toBase58());
+      setDistributorClaimMint((current) => current || mint.toBase58());
+      setDistributorClaimVault((current) => current || vaultAta.toBase58());
+      setStatus({
+        severity: "info",
+        message: "Distributor, vault authority, and vault ATA derived."
+      });
+    } catch (unknownError) {
+      setStatus({
+        severity: "error",
+        message:
+          unknownError instanceof Error
+            ? unknownError.message
+            : "Failed to derive distributor accounts."
+      });
+    }
+  };
+
+  const generateDistributorWizardRootAndClaimPackage = () => {
+    setStatus(null);
+    try {
+      const mint = new PublicKey(distributorWizardMint.trim());
+      const [distributor] = distributorClient.findDistributorPda(mint);
+      const [vaultAuthority] = distributorClient.findVaultAuthorityPda(distributor);
+      const vaultAta = getAssociatedTokenAddressSync(
+        mint,
+        vaultAuthority,
+        true,
+        TOKEN_PROGRAM_ID,
+        ASSOCIATED_TOKEN_PROGRAM_ID
+      );
+
+      const allocations = parseDistributorAllocationsInput(
+        distributorWizardAllocations
+      );
+      const leaves = allocations.map((allocation) =>
+        computeLeaf(distributor, allocation.wallet, allocation.index, allocation.amount)
+      );
+      const { root, proofs } = buildMerkleRootAndProofs(leaves);
+      const rootHex = toHexPrefixed(root);
+
+      setDistributorIssueMerkleRoot(rootHex);
+      setDistributorSetRootValue(rootHex);
+      setDistributorClaimRoot(rootHex);
+      setDistributorIssueMint(mint.toBase58());
+      setDistributorIssueVault(vaultAta.toBase58());
+      setDistributorSetRootDistributor(distributor.toBase58());
+      setDistributorClaimMint(mint.toBase58());
+      setDistributorClaimVault(vaultAta.toBase58());
+      setDistributorWizardDistributorPda(distributor.toBase58());
+      setDistributorWizardVaultAuthorityPda(vaultAuthority.toBase58());
+      setDistributorWizardVaultAta(vaultAta.toBase58());
+
+      const configuredClaimantAddress = (
+        distributorWizardClaimant.trim() || publicKey?.toBase58() || ""
+      ).trim();
+      const claimantAddress =
+        configuredClaimantAddress || allocations[0]?.wallet.toBase58() || "";
+      const usedFallbackClaimant =
+        !configuredClaimantAddress && claimantAddress.length > 0;
+      let claimantLoaded = false;
+      if (claimantAddress) {
+        const claimant = new PublicKey(claimantAddress).toBase58();
+        const claimantAllocationIndex = allocations.findIndex(
+          (allocation) => allocation.wallet.toBase58() === claimant
+        );
+        if (claimantAllocationIndex >= 0) {
+          const allocation = allocations[claimantAllocationIndex];
+          const claimantProof = proofs[claimantAllocationIndex];
+          const claimPackage = {
+            wallet: claimant,
+            mint: mint.toBase58(),
+            vault: vaultAta.toBase58(),
+            distributor: distributor.toBase58(),
+            index: allocation.index.toString(),
+            amount: allocation.amount.toString(),
+            root: rootHex,
+            proof: claimantProof.map((node) => toHexPrefixed(node))
+          };
+          applyDistributorClaimPackagePayload(claimPackage, "Wizard claim package");
+          claimantLoaded = true;
+        }
+      }
+
+      const claimManifest = {
+        version: 1,
+        generatedAt: new Date().toISOString(),
+        campaigns: [
+          {
+            id: `distributor-${mint.toBase58().slice(0, 8)}`,
+            label: "Grape Distributor Campaign",
+            mint: mint.toBase58(),
+            vault: vaultAta.toBase58(),
+            distributor: distributor.toBase58(),
+            root: rootHex,
+            claims: allocations.map((allocation, allocationIndex) => ({
+              wallet: allocation.wallet.toBase58(),
+              index: allocation.index.toString(),
+              amount: allocation.amount.toString(),
+              proof: proofs[allocationIndex].map((node) => toHexPrefixed(node))
+            }))
+          }
+        ]
+      };
+      setDistributorClaimPackageJson(JSON.stringify(claimManifest, null, 2));
+
+      setStatus({
+        severity: "success",
+        message: claimantLoaded
+          ? usedFallbackClaimant
+            ? `Generated root + claim manifest (${allocations.length} allocation(s)); loaded wallet claim for ${shortenAddress(claimantAddress)}.`
+            : `Generated root + claim manifest (${allocations.length} allocation(s)) and loaded claimant package.`
+          : configuredClaimantAddress
+            ? `Generated root + claim manifest (${allocations.length} allocation(s)), but claimant wallet is not present in allocations.`
+            : `Generated root + claim manifest (${allocations.length} allocation(s)). Set claimant wallet to auto-load one entry for testing.`
+      });
+    } catch (unknownError) {
+      setStatus({
+        severity: "error",
+        message:
+          unknownError instanceof Error
+            ? unknownError.message
+            : "Failed to generate merkle root."
+      });
+    }
+  };
+
   const initializeDistributor = async () => {
     if (!publicKey) {
       setStatus({ severity: "error", message: "Connect your wallet first." });
@@ -1637,10 +2004,28 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
       const mint = new PublicKey(distributorIssueMint.trim());
       const vault = new PublicKey(distributorIssueVault.trim());
       const merkleRoot = parseHex32(distributorIssueMerkleRoot, "Merkle root");
-      const startTs = BigInt(distributorIssueStartTs.trim());
-      const endTs = BigInt(distributorIssueEndTs.trim());
+      const startTs = parseDateTimeLocalToUnix(
+        distributorIssueStartAt,
+        "Start time"
+      );
+      const endTs = parseDateTimeLocalToUnix(distributorIssueEndAt, "End time");
       if (endTs < startTs) {
         throw new Error("End timestamp must be greater than or equal to start.");
+      }
+
+      const mintInfo = await connection.getAccountInfo(mint, "confirmed");
+      if (!mintInfo) {
+        throw new Error("Mint account was not found on-chain.");
+      }
+      if (!mintInfo.owner.equals(TOKEN_PROGRAM_ID)) {
+        if (mintInfo.owner.equals(TOKEN_2022_PROGRAM_ID)) {
+          throw new Error(
+            "Grape Distributor currently supports SPL Token (Token Program) mints only. Token-2022 mints are not supported for this flow yet."
+          );
+        }
+        throw new Error(
+          `Mint is owned by unsupported program ${mintInfo.owner.toBase58()}.`
+        );
       }
 
       const { instruction, distributor, vaultAuthority } =
@@ -1653,8 +2038,40 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
           endTs
         });
 
+      const expectedVault = getAssociatedTokenAddressSync(
+        mint,
+        vaultAuthority,
+        true,
+        TOKEN_PROGRAM_ID,
+        ASSOCIATED_TOKEN_PROGRAM_ID
+      );
+      if (!vault.equals(expectedVault)) {
+        throw new Error(
+          `Vault token account does not match derived vault ATA for this distributor. Expected ${expectedVault.toBase58()}.`
+        );
+      }
+
+      const distributorInfo = await connection.getAccountInfo(distributor, "confirmed");
+      if (distributorInfo) {
+        throw new Error(
+          `Distributor already initialized at ${distributor.toBase58()}. Use Set Root instead.`
+        );
+      }
+
+      const transaction = new Transaction().add(
+        createAssociatedTokenAccountIdempotentInstruction(
+          publicKey,
+          vault,
+          vaultAuthority,
+          mint,
+          TOKEN_PROGRAM_ID,
+          ASSOCIATED_TOKEN_PROGRAM_ID
+        ),
+        instruction
+      );
+
       const signature = await runWalletTransaction(
-        new Transaction().add(instruction)
+        transaction
       );
       setDistributorSetRootDistributor(distributor.toBase58());
       setDistributorClaimMint((current) => current || mint.toBase58());
@@ -1714,6 +2131,167 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
       });
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const applyDistributorClaimPackagePayload = (
+    payload: Record<string, unknown>,
+    sourceLabel: string
+  ) => {
+    const mint = payload.mint;
+    const vault = payload.vault;
+    const index = payload.index;
+    const amount = payload.amount;
+    const root = payload.root ?? payload.merkleRoot;
+    const proof = payload.proof;
+
+    if (typeof mint !== "string") {
+      throw new Error("Claim package requires `mint`.");
+    }
+    if (typeof vault !== "string") {
+      throw new Error("Claim package requires `vault`.");
+    }
+    if (root !== undefined && typeof root !== "string") {
+      throw new Error("Claim package `root` must be a hex string.");
+    }
+    if (!Array.isArray(proof)) {
+      throw new Error("Claim package requires `proof` array.");
+    }
+
+    const normalizedProofLines = proof.map((node, nodeIndex) => {
+      if (typeof node !== "string") {
+        throw new Error(
+          `Claim package proof[${nodeIndex}] must be a 32-byte hex string.`
+        );
+      }
+      parseHex32(node, `Claim package proof[${nodeIndex}]`);
+      return node.trim();
+    });
+
+    const parsedIndex = parseAtomicAmount(index);
+    const parsedAmount = parseAtomicAmount(amount);
+    if (parsedIndex < 0n) {
+      throw new Error("Claim package index must be non-negative.");
+    }
+    if (parsedAmount <= 0n) {
+      throw new Error("Claim package amount must be greater than zero.");
+    }
+
+    setDistributorClaimMint(mint);
+    setDistributorClaimVault(vault);
+    setDistributorClaimIndex(parsedIndex.toString());
+    setDistributorClaimAmount(parsedAmount.toString());
+    setDistributorClaimProof(normalizedProofLines.join("\n"));
+    if (typeof root === "string") {
+      setDistributorClaimRoot(root);
+    }
+    setStatus({
+      severity: "info",
+      message:
+        `${sourceLabel} loaded. Connected wallet will be used as claimant signer.`
+    });
+  };
+
+  const applyDistributorClaimPackage = () => {
+    setStatus(null);
+    try {
+      const payload = JSON.parse(distributorClaimPackageJson) as Record<
+        string,
+        unknown
+      >;
+      const { claimPayload, sourceLabel } = resolveDistributorClaimPayloadFromManifest(
+        payload,
+        publicKey?.toBase58()
+      );
+      applyDistributorClaimPackagePayload(claimPayload, sourceLabel);
+    } catch (unknownError) {
+      setStatus({
+        severity: "error",
+        message:
+          unknownError instanceof Error
+            ? unknownError.message
+            : "Invalid claim package JSON."
+      });
+    }
+  };
+
+  const loadDistributorClaimPackageFromUrl = async () => {
+    setIsDistributorClaimPackageLoading(true);
+    setStatus(null);
+    try {
+      const packageUrl = distributorClaimPackageUrl.trim();
+      if (!packageUrl) {
+        throw new Error("Claim package URL is required.");
+      }
+
+      const response = await fetch(packageUrl);
+      if (!response.ok) {
+        throw new Error(
+          `Failed to fetch claim package: ${response.status} ${response.statusText}`
+        );
+      }
+      const payload = (await response.json()) as Record<string, unknown>;
+      setDistributorClaimPackageJson(JSON.stringify(payload, null, 2));
+      const { claimPayload, sourceLabel } = resolveDistributorClaimPayloadFromManifest(
+        payload,
+        publicKey?.toBase58()
+      );
+      applyDistributorClaimPackagePayload(claimPayload, sourceLabel);
+    } catch (unknownError) {
+      setStatus({
+        severity: "error",
+        message:
+          unknownError instanceof Error
+            ? unknownError.message
+            : "Failed to load claim package URL."
+      });
+    } finally {
+      setIsDistributorClaimPackageLoading(false);
+    }
+  };
+
+  const uploadDistributorClaimPackageToIrys = async () => {
+    if (!publicKey) {
+      setStatus({ severity: "error", message: "Connect your wallet first." });
+      return;
+    }
+
+    setIsDistributorClaimPackageLoading(true);
+    setStatus(null);
+    try {
+      if (!distributorClaimPackageJson.trim()) {
+        throw new Error("Claim package JSON is required.");
+      }
+      const payload = JSON.parse(distributorClaimPackageJson) as Record<
+        string,
+        unknown
+      >;
+      const normalized = JSON.stringify(payload, null, 2);
+      const claimPackageFile = new File(
+        [normalized],
+        "grape-distributor-claim-manifest.json",
+        {
+          type: "application/json"
+        }
+      );
+
+      const packageUrl = await uploadFileToIrys(claimPackageFile);
+      setUploadedDistributorClaimPackageUrl(packageUrl);
+      setDistributorClaimPackageUrl(packageUrl);
+      setStatus({
+        severity: "success",
+        message: "Claim JSON uploaded to Irys."
+      });
+    } catch (unknownError) {
+      setStatus({
+        severity: "error",
+        message:
+          unknownError instanceof Error
+            ? unknownError.message
+            : "Failed to upload claim package."
+      });
+    } finally {
+      setIsDistributorClaimPackageLoading(false);
     }
   };
 
@@ -3605,9 +4183,9 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
           </Accordion>
 
           <Accordion
-            expanded={expandedOperation === "grape-distributor-issue"}
+            expanded={expandedOperation === "grape-distributor-wizard"}
             onChange={(_event, isExpanded) => {
-              setExpandedOperation(isExpanded ? "grape-distributor-issue" : false);
+              setExpandedOperation(isExpanded ? "grape-distributor-wizard" : false);
             }}
             disableGutters
             sx={{
@@ -3621,12 +4199,153 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
             <AccordionSummary
               expandIcon={
                 <Typography color="text.secondary">
+                  {expandedOperation === "grape-distributor-wizard" ? "−" : "+"}
+                </Typography>
+              }
+            >
+              <Typography variant="subtitle2">
+                13. Grape Distributor Quick Wizard
+              </Typography>
+            </AccordionSummary>
+            <AccordionDetails sx={{ pt: 0.5 }}>
+              <Card variant="outlined" sx={{ borderRadius: 1.5 }}>
+                <CardContent sx={{ p: 1.2 }}>
+                  <Stack spacing={1}>
+                    <Typography variant="subtitle2">
+                      Wizard: Mint → Vault → Root → Claim Package
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      One line per allocation: wallet,amountBaseUnits
+                    </Typography>
+                    <TextField
+                      size="small"
+                      label="Mint Address"
+                      value={distributorWizardMint}
+                      onChange={(event) => {
+                        setDistributorWizardMint(event.target.value);
+                      }}
+                    />
+                    <TextField
+                      size="small"
+                      label="Claimant Wallet (optional, defaults to connected wallet)"
+                      value={distributorWizardClaimant}
+                      onChange={(event) => {
+                        setDistributorWizardClaimant(event.target.value);
+                      }}
+                      placeholder={publicKey?.toBase58() || ""}
+                    />
+                    <TextField
+                      multiline
+                      minRows={6}
+                      size="small"
+                      label="Allocations"
+                      value={distributorWizardAllocations}
+                      onChange={(event) => {
+                        setDistributorWizardAllocations(event.target.value);
+                      }}
+                      placeholder={`WalletAddress1,1000000\nWalletAddress2,2500000`}
+                    />
+                    <Stack direction={{ xs: "column", md: "row" }} spacing={1}>
+                      <Button
+                        variant="outlined"
+                        onClick={deriveDistributorWizardAccounts}
+                        disabled={isSubmitting}
+                      >
+                        Derive Distributor + Vault
+                      </Button>
+                      <Button
+                        variant="contained"
+                        onClick={generateDistributorWizardRootAndClaimPackage}
+                        disabled={isSubmitting}
+                      >
+                        Generate Root + Claim Package
+                      </Button>
+                    </Stack>
+                    <Typography variant="caption" color="text.secondary">
+                      Generated values appear below and also prefill Distributor setup + claim sections.
+                    </Typography>
+                    {status ? <Alert severity={status.severity}>{status.message}</Alert> : null}
+                    <TextField
+                      size="small"
+                      label="Generated Merkle Root"
+                      value={distributorIssueMerkleRoot}
+                      InputProps={{ readOnly: true }}
+                      placeholder="0x..."
+                    />
+                    <TextField
+                      multiline
+                      minRows={4}
+                      size="small"
+                      label="Generated Claim Package"
+                      value={distributorClaimPackageJson}
+                      InputProps={{ readOnly: true }}
+                      placeholder="Claim package JSON will appear here after generation."
+                    />
+                    {distributorWizardDistributorPda ? (
+                      <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        sx={{
+                          wordBreak: "break-all",
+                          fontFamily: "var(--font-mono), monospace"
+                        }}
+                      >
+                        Distributor PDA: {distributorWizardDistributorPda}
+                      </Typography>
+                    ) : null}
+                    {distributorWizardVaultAuthorityPda ? (
+                      <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        sx={{
+                          wordBreak: "break-all",
+                          fontFamily: "var(--font-mono), monospace"
+                        }}
+                      >
+                        Vault Authority PDA: {distributorWizardVaultAuthorityPda}
+                      </Typography>
+                    ) : null}
+                    {distributorWizardVaultAta ? (
+                      <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        sx={{
+                          wordBreak: "break-all",
+                          fontFamily: "var(--font-mono), monospace"
+                        }}
+                      >
+                        Vault ATA: {distributorWizardVaultAta}
+                      </Typography>
+                    ) : null}
+                  </Stack>
+                </CardContent>
+              </Card>
+            </AccordionDetails>
+          </Accordion>
+
+          <Accordion
+            expanded={expandedOperation === "grape-distributor-issue"}
+            onChange={(_event, isExpanded) => {
+              setExpandedOperation(isExpanded ? "grape-distributor-issue" : false);
+            }}
+            disableGutters
+            sx={{
+              bgcolor: "transparent",
+              border: "1px solid",
+              borderColor: "divider",
+              borderRadius: "8px !important",
+              order: 14
+            }}
+          >
+            <AccordionSummary
+              expandIcon={
+                <Typography color="text.secondary">
                   {expandedOperation === "grape-distributor-issue" ? "−" : "+"}
                 </Typography>
               }
             >
               <Typography variant="subtitle2">
-                13. Grape Distributor (Issue/Admin)
+                14. Grape Distributor (Issue/Admin)
               </Typography>
             </AccordionSummary>
             <AccordionDetails sx={{ pt: 0.5 }}>
@@ -3646,6 +4365,10 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
                     <Typography variant="caption" color="text.secondary">
                       Initialize distributor once, then rotate roots as claims change. Root must be 32-byte hex.
                     </Typography>
+                    <Alert severity="info">
+                      Setup flow: 1) prepare claim package JSON + root, 2) initialize distributor,
+                      3) optionally upload package to Irys, 4) share package URL with claimants.
+                    </Alert>
                     <TextField
                       size="small"
                       label="Mint Address"
@@ -3674,21 +4397,28 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
                     <Stack direction={{ xs: "column", md: "row" }} spacing={1}>
                       <TextField
                         size="small"
-                        label="Start Timestamp (unix)"
-                        value={distributorIssueStartTs}
+                        type="datetime-local"
+                        label="Claim Window Start"
+                        value={distributorIssueStartAt}
                         onChange={(event) => {
-                          setDistributorIssueStartTs(event.target.value);
+                          setDistributorIssueStartAt(event.target.value);
                         }}
+                        InputLabelProps={{ shrink: true }}
                       />
                       <TextField
                         size="small"
-                        label="End Timestamp (unix)"
-                        value={distributorIssueEndTs}
+                        type="datetime-local"
+                        label="Claim Window End"
+                        value={distributorIssueEndAt}
                         onChange={(event) => {
-                          setDistributorIssueEndTs(event.target.value);
+                          setDistributorIssueEndAt(event.target.value);
                         }}
+                        InputLabelProps={{ shrink: true }}
                       />
                     </Stack>
+                    <Typography variant="caption" color="text.secondary">
+                      Local timezone input. Converted to unix timestamps automatically.
+                    </Typography>
                     <Button
                       variant="contained"
                       onClick={() => {
@@ -3741,7 +4471,7 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
               border: "1px solid",
               borderColor: "divider",
               borderRadius: "8px !important",
-              order: 14
+              order: 15
             }}
           >
             <AccordionSummary
@@ -3751,7 +4481,7 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
                 </Typography>
               }
             >
-              <Typography variant="subtitle2">14. Grape Distributor (Claim/User)</Typography>
+              <Typography variant="subtitle2">15. Grape Distributor (Claim/User)</Typography>
             </AccordionSummary>
             <AccordionDetails sx={{ pt: 0.5 }}>
               <Card variant="outlined" sx={{ borderRadius: 1.5 }}>
@@ -3759,7 +4489,76 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
                   <Stack spacing={1}>
                     <Typography variant="subtitle2">Claim Tokens From Distributor</Typography>
                     <Typography variant="caption" color="text.secondary">
-                      Proof nodes are one 32-byte hex string per line. Amount uses raw base units.
+                      Connected wallet is used as claimant signer automatically.
+                      Claim eligibility (index/amount/proof) comes from your claim package or claim manifest.
+                    </Typography>
+                    <TextField
+                      multiline
+                      minRows={5}
+                      size="small"
+                      label="Claim JSON (single package or manifest)"
+                      value={distributorClaimPackageJson}
+                      onChange={(event) => {
+                        setDistributorClaimPackageJson(event.target.value);
+                      }}
+                      placeholder={`{\n  "version": 1,\n  "campaigns": [\n    {\n      "mint": "...",\n      "vault": "...",\n      "root": "0x...",\n      "claims": [\n        { "wallet": "...", "index": "0", "amount": "1000000", "proof": ["0x..."] }\n      ]\n    }\n  ]\n}`}
+                    />
+                    <Stack direction={{ xs: "column", md: "row" }} spacing={1}>
+                      <Button
+                        variant="outlined"
+                        onClick={applyDistributorClaimPackage}
+                        disabled={
+                          !connected || isSubmitting || isDistributorClaimPackageLoading
+                        }
+                      >
+                        Apply Claim JSON
+                      </Button>
+                      <Button
+                        variant="outlined"
+                        onClick={() => {
+                          void uploadDistributorClaimPackageToIrys();
+                        }}
+                        disabled={
+                          !connected || isSubmitting || isDistributorClaimPackageLoading
+                        }
+                      >
+                        Upload Claim JSON to Irys
+                      </Button>
+                    </Stack>
+                    <TextField
+                      size="small"
+                      label="Claim JSON URL (Irys or HTTPS)"
+                      value={distributorClaimPackageUrl}
+                      onChange={(event) => {
+                        setDistributorClaimPackageUrl(event.target.value);
+                      }}
+                      placeholder="https://gateway.irys.xyz/..."
+                    />
+                    <Button
+                      variant="outlined"
+                      onClick={() => {
+                        void loadDistributorClaimPackageFromUrl();
+                      }}
+                      disabled={
+                        !connected || isSubmitting || isDistributorClaimPackageLoading
+                      }
+                      >
+                      Load Claim JSON URL
+                      </Button>
+                    {uploadedDistributorClaimPackageUrl ? (
+                      <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        sx={{
+                          wordBreak: "break-all",
+                          fontFamily: "var(--font-mono), monospace"
+                        }}
+                      >
+                        Uploaded Claim JSON URL: {uploadedDistributorClaimPackageUrl}
+                      </Typography>
+                    ) : null}
+                    <Typography variant="caption" color="text.secondary">
+                      Manual mode: proof nodes are one 32-byte hex string per line. Amount uses raw base units.
                     </Typography>
                     <TextField
                       size="small"

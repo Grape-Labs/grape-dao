@@ -25,8 +25,7 @@ type SolanaWalletProviderProps = {
 
 const RPC_STORAGE_KEY = "grapehub.rpc.endpoint";
 const SHYFT_DEFAULT_RPC_ENDPOINT =
-  process.env.NEXT_PUBLIC_SOLANA_DEFAULT_RPC_URL ||
-  "https://rpc.shyft.to?api_key=djvYMX3G_jA4IDf8";
+  process.env.NEXT_PUBLIC_SOLANA_DEFAULT_RPC_URL || "https://api.mainnet-beta.solana.com";
 
 type RpcProviderOption = {
   label: string;
