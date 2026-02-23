@@ -48,7 +48,7 @@ export const grapeProducts: GrapeProduct[] = [
     programId: "GPASSzQQF1H8cdj5pUwFkeYEE4VdMQtCrYtUaMXvPz48",
     href: "https://access.governance.so/",
     ctaLabel: "Open Grape Access",
-    sdkHref: "https://github.com/Grape-Labs/grape-gating-protocol",
+    sdkHref: "https://www.npmjs.com/package/@grapenpm/gpass-sdk",
     logo: grapeAvatar
   },
   {
