@@ -53,6 +53,25 @@ export default function Home() {
     "Identity, reputation, access, and governance in one stack",
     "Composable primitives for communities that need to scale"
   ];
+  const gettingStartedSteps = [
+    {
+      title: "Create Your OG Reputation Space",
+      detail:
+        "Create your Space, set branding, and publish your on-chain reputation hub for your community.",
+      href: "https://vine.governance.so",
+      ctaLabel: "Open vine.governance.so"
+    },
+    {
+      title: "Establish Your Reputation Layer",
+      detail:
+        "Reputation is your community’s trust infrastructure. Define how influence is earned, verified, and preserved — across manual awards, Discord automation, on-chain actions, and seasonal rules."
+    },
+    {
+      title: "Set Up Your Discord Bot",
+      detail:
+        "Deploy your Discord bot to automate awards, recognize participation, and connect your community activity directly to on-chain reputation."
+    }
+  ];
 
   return (
     <Container maxWidth="xl" sx={{ py: { xs: 3, md: 6 } }}>
@@ -197,6 +216,75 @@ export default function Home() {
         </CardContent>
       </Card>
 
+      <Box mt={3}>
+        <Card
+          className="fx-enter fx-shell"
+          sx={{
+            borderRadius: 2.5,
+            background:
+              "linear-gradient(150deg, rgba(15, 27, 36, 0.94), rgba(9, 16, 22, 0.96))"
+          }}
+        >
+          <CardContent sx={{ p: { xs: 2.2, md: 2.8 } }}>
+            <Stack spacing={1.4}>
+              <Typography variant="overline" color="primary.light">
+                Getting Started
+              </Typography>
+              <Typography variant="h2" sx={{ fontSize: { xs: "1.35rem", md: "1.75rem" } }}>
+                Launch Your Reputation Layer
+              </Typography>
+              <Typography color="text.secondary">
+                Reputation is an on-chain record of contribution that can power access, rewards, and governance.
+              </Typography>
+              <Grid container spacing={1.2}>
+                {gettingStartedSteps.map((step, index) => (
+                  <Grid item xs={12} md={4} key={step.title}>
+                    <Card
+                      variant="outlined"
+                      sx={{
+                        height: "100%",
+                        borderRadius: 1.8,
+                        background:
+                          "linear-gradient(145deg, rgba(18, 32, 42, 0.9), rgba(12, 22, 30, 0.9))",
+                        borderColor: "divider"
+                      }}
+                    >
+                      <CardContent sx={{ p: 1.3, "&:last-child": { pb: 1.3 } }}>
+                        <Stack spacing={0.8}>
+                          <Chip
+                            size="small"
+                            variant="outlined"
+                            label={`Step ${index + 1}`}
+                            sx={{ width: "fit-content" }}
+                          />
+                          <Typography variant="subtitle2">{step.title}</Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            {step.detail}
+                          </Typography>
+                          {step.href ? (
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              color="secondary"
+                              href={step.href}
+                              target="_blank"
+                              rel="noreferrer"
+                              sx={{ width: "fit-content" }}
+                            >
+                              {step.ctaLabel}
+                            </Button>
+                          ) : null}
+                        </Stack>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                ))}
+              </Grid>
+            </Stack>
+          </CardContent>
+        </Card>
+      </Box>
+
       <Box mt={5}>
         <Stack spacing={1}>
           <Typography variant="overline" color="primary.light">
@@ -276,7 +364,23 @@ export default function Home() {
                           SDK / NPM
                         </Button>
                       ) : null}
+                      {product.requestBotFromDao ? (
+                        <Button
+                          variant="outlined"
+                          color="secondary"
+                          href={grapeLinks.discord}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          Request Discord Bot
+                        </Button>
+                      ) : null}
                     </Stack>
+                    {product.requestBotFromDao ? (
+                      <Typography variant="caption" color="text.secondary">
+                        Bot invite links are private. Reach out to the Grape DAO for setup.
+                      </Typography>
+                    ) : null}
                   </Stack>
                 </CardContent>
               </Card>

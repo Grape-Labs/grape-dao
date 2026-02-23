@@ -11,6 +11,7 @@ export type GrapeProduct = {
   href: string;
   ctaLabel: string;
   sdkHref?: string;
+  requestBotFromDao?: boolean;
   logo: StaticImageData;
 };
 
@@ -23,6 +24,7 @@ export const grapeProducts: GrapeProduct[] = [
     href: "https://vine.governance.so",
     ctaLabel: "Open OG Reputation Space",
     sdkHref: "https://github.com/Grape-Labs/vine-reputation-npm",
+    requestBotFromDao: true,
     logo: ogAvatar
   },
   {
@@ -33,6 +35,7 @@ export const grapeProducts: GrapeProduct[] = [
     href: "https://verification.governance.so/",
     ctaLabel: "Open Grape Verification",
     sdkHref: "https://github.com/Grape-Labs/grape-verification-npm",
+    requestBotFromDao: true,
     logo: verificationAvatar
   },
   {
