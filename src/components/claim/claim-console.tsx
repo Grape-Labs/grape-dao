@@ -20,6 +20,7 @@ import {
   Stack,
   Typography
 } from "@mui/material";
+import { grapeLinks } from "@/lib/grape";
 
 type ClaimStatusState = {
   severity: "success" | "error" | "info";
@@ -204,8 +205,11 @@ export function ClaimConsole() {
   const [lastCheckedAt, setLastCheckedAt] = useState<string | null>(null);
 
   const envManifestUrl = process.env.NEXT_PUBLIC_GRAPE_CLAIMS_MANIFEST_URL || "";
-  const manifestUrl = queryManifestUrl || envManifestUrl || DEFAULT_MANIFEST_URL;
-  const isFallbackManifestSource = !queryManifestUrl && !envManifestUrl;
+  const configuredManifestUrl = grapeLinks.claimManifest || "";
+  const manifestUrl =
+    queryManifestUrl || envManifestUrl || configuredManifestUrl || DEFAULT_MANIFEST_URL;
+  const isFallbackManifestSource =
+    !queryManifestUrl && !envManifestUrl && !configuredManifestUrl;
   const distributorClient = useMemo(
     () => new GrapeDistributorClient(connection),
     [connection]
