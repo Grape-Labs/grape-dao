@@ -1,6 +1,7 @@
 import { grapeLinks, grapeProducts } from "@/lib/grape";
 import { LiveSignalsPanel } from "@/components/solana/live-signals-panel";
 import { RotatingTagline } from "@/components/brand/rotating-tagline";
+import GitHubIcon from "@mui/icons-material/GitHub";
 import Image from "next/image";
 import {
   Avatar,
@@ -11,9 +12,29 @@ import {
   Chip,
   Container,
   Grid,
+  IconButton,
   Stack,
+  SvgIcon,
+  type SvgIconProps,
+  Tooltip,
   Typography
 } from "@mui/material";
+
+function DiscordLogoIcon(props: SvgIconProps) {
+  return (
+    <SvgIcon {...props} viewBox="0 0 24 24">
+      <path d="M20.317 4.369A19.791 19.791 0 0 0 15.885 3c-.191.34-.403.8-.553 1.165a18.27 18.27 0 0 0-6.664 0A12.64 12.64 0 0 0 8.115 3a19.736 19.736 0 0 0-4.433 1.369C.533 9.045-.32 13.579.099 18.057a19.9 19.9 0 0 0 5.993 3.043c.476-.648.9-1.336 1.27-2.056-.697-.263-1.365-.59-1.996-.972.167-.122.331-.249.49-.379 3.85 1.77 8.03 1.77 11.833 0 .16.13.324.257.49.379-.631.382-1.3.709-1.997.972.37.72.794 1.408 1.27 2.056a19.843 19.843 0 0 0 5.993-3.043c.5-5.177-.838-9.67-3.128-13.688zM8.02 15.331c-1.183 0-2.157-1.086-2.157-2.419 0-1.334.955-2.419 2.157-2.419 1.212 0 2.176 1.095 2.157 2.419 0 1.333-.955 2.419-2.157 2.419zm7.975 0c-1.183 0-2.157-1.086-2.157-2.419 0-1.334.955-2.419 2.157-2.419 1.212 0 2.176 1.095 2.157 2.419 0 1.333-.945 2.419-2.157 2.419z" />
+    </SvgIcon>
+  );
+}
+
+function XLogoIcon(props: SvgIconProps) {
+  return (
+    <SvgIcon {...props} viewBox="0 0 24 24">
+      <path d="M18.244 2H21.5l-7.12 8.134L22.75 22h-6.56l-5.14-6.74L5.16 22H1.9l7.62-8.71L1.25 2h6.73l4.65 6.14L18.24 2zm-1.15 18h1.8L7.04 3.9H5.1L17.09 20z" />
+    </SvgIcon>
+  );
+}
 
 export default function Home() {
   const accentGradients = [
@@ -174,24 +195,45 @@ export default function Home() {
                   >
                     Read Docs
                   </Button>
-                  <Button
-                    variant="outlined"
-                    color="secondary"
-                    href={grapeLinks.discord}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Join Discord
-                  </Button>
-                  <Button
-                    variant="outlined"
-                    color="secondary"
-                    href={grapeLinks.github}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    GitHub
-                  </Button>
+                  <Tooltip title="Join Discord">
+                    <IconButton
+                      component="a"
+                      href={grapeLinks.discord}
+                      target="_blank"
+                      rel="noreferrer"
+                      aria-label="Join Discord"
+                      color="secondary"
+                      sx={{ border: "1px solid", borderColor: "divider" }}
+                    >
+                      <DiscordLogoIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                  <Tooltip title="Follow on X">
+                    <IconButton
+                      component="a"
+                      href={grapeLinks.x}
+                      target="_blank"
+                      rel="noreferrer"
+                      aria-label="Follow on X"
+                      color="secondary"
+                      sx={{ border: "1px solid", borderColor: "divider" }}
+                    >
+                      <XLogoIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                  <Tooltip title="GitHub">
+                    <IconButton
+                      component="a"
+                      href={grapeLinks.github}
+                      target="_blank"
+                      rel="noreferrer"
+                      aria-label="GitHub"
+                      color="secondary"
+                      sx={{ border: "1px solid", borderColor: "divider" }}
+                    >
+                      <GitHubIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
                   <Button variant="outlined" color="primary" href="/identity">
                     Identity
                   </Button>
