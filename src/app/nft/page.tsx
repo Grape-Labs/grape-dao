@@ -43,6 +43,9 @@ export default function NftPage() {
               <Button variant="outlined" color="primary" href="/token">
                 Token Tools
               </Button>
+              <Button variant="outlined" color="primary" href="/faq">
+                FAQ
+              </Button>
               <Button variant="outlined" color="secondary" href={grapeLinks.docs} target="_blank" rel="noreferrer">
                 Docs
               </Button>
@@ -58,4 +61,3 @@ export default function NftPage() {
     </Container>
   );
 }
-

@@ -44,6 +44,9 @@ export default function ClaimPage() {
               <Button variant="outlined" color="primary" href="/identity">
                 Identity
               </Button>
+              <Button variant="outlined" color="primary" href="/faq">
+                FAQ
+              </Button>
               <Button variant="outlined" color="secondary" href={grapeLinks.docs} target="_blank" rel="noreferrer">
                 Docs
               </Button>

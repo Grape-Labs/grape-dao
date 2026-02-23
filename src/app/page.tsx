@@ -159,12 +159,12 @@ export default function Home() {
                 <Typography
                   variant="h1"
                   sx={{
-                    maxWidth: "17ch",
+                    maxWidth: "20ch",
                     fontSize: { xs: "2rem", md: "3.2rem" },
                     lineHeight: 1.05
                   }}
                 >
-                  Identity, Access, and{" "}
+                  Identity, Reputation, Access, and{" "}
                   <Box
                     component="span"
                     sx={{
@@ -185,67 +185,76 @@ export default function Home() {
                 <Typography color="text.secondary" sx={{ maxWidth: 760 }}>
                   Learn more in the docs and connect with the DAO on Discord.
                 </Typography>
-                <Stack direction={{ xs: "column", sm: "row" }} spacing={1.2} alignItems={{ sm: "center" }}>
-                  <Button
-                    variant="contained"
-                    color="primary"
-                    href={grapeLinks.docs}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Read Docs
-                  </Button>
-                  <Tooltip title="Join Discord">
-                    <IconButton
-                      component="a"
-                      href={grapeLinks.discord}
+                <Stack spacing={1.1}>
+                  <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                    <Button
+                      variant="contained"
+                      color="primary"
+                      href={grapeLinks.docs}
                       target="_blank"
                       rel="noreferrer"
-                      aria-label="Join Discord"
-                      color="secondary"
-                      sx={{ border: "1px solid", borderColor: "divider" }}
                     >
-                      <DiscordLogoIcon fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                  <Tooltip title="Follow on X">
-                    <IconButton
-                      component="a"
-                      href={grapeLinks.x}
-                      target="_blank"
-                      rel="noreferrer"
-                      aria-label="Follow on X"
-                      color="secondary"
-                      sx={{ border: "1px solid", borderColor: "divider" }}
-                    >
-                      <XLogoIcon fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                  <Tooltip title="GitHub">
-                    <IconButton
-                      component="a"
-                      href={grapeLinks.github}
-                      target="_blank"
-                      rel="noreferrer"
-                      aria-label="GitHub"
-                      color="secondary"
-                      sx={{ border: "1px solid", borderColor: "divider" }}
-                    >
-                      <GitHubIcon fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                  <Button variant="outlined" color="primary" href="/identity">
-                    Identity
-                  </Button>
-                  <Button variant="outlined" color="primary" href="/token">
-                    Token Tools
-                  </Button>
-                  <Button variant="outlined" color="primary" href="/nft">
-                    NFT Tools
-                  </Button>
-                  <Button variant="outlined" color="primary" href="/claim">
-                    Claim
-                  </Button>
+                      Read Docs
+                    </Button>
+                    <Stack direction="row" spacing={0.8} alignItems="center" sx={{ flexShrink: 0 }}>
+                      <Tooltip title="Join Discord">
+                        <IconButton
+                          component="a"
+                          href={grapeLinks.discord}
+                          target="_blank"
+                          rel="noreferrer"
+                          aria-label="Join Discord"
+                          color="secondary"
+                          sx={{ border: "1px solid", borderColor: "divider" }}
+                        >
+                          <DiscordLogoIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Follow on X">
+                        <IconButton
+                          component="a"
+                          href={grapeLinks.x}
+                          target="_blank"
+                          rel="noreferrer"
+                          aria-label="Follow on X"
+                          color="secondary"
+                          sx={{ border: "1px solid", borderColor: "divider" }}
+                        >
+                          <XLogoIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="GitHub">
+                        <IconButton
+                          component="a"
+                          href={grapeLinks.github}
+                          target="_blank"
+                          rel="noreferrer"
+                          aria-label="GitHub"
+                          color="secondary"
+                          sx={{ border: "1px solid", borderColor: "divider" }}
+                        >
+                          <GitHubIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    </Stack>
+                  </Stack>
+                  <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                    <Button variant="outlined" color="primary" href="/identity">
+                      Identity
+                    </Button>
+                    <Button variant="outlined" color="primary" href="/token">
+                      Token Tools
+                    </Button>
+                    <Button variant="outlined" color="primary" href="/nft">
+                      NFT Tools
+                    </Button>
+                    <Button variant="outlined" color="primary" href="/claim">
+                      Claim
+                    </Button>
+                    <Button variant="outlined" color="primary" href="/faq">
+                      FAQ
+                    </Button>
+                  </Stack>
                 </Stack>
                 <Stack direction={{ xs: "column", md: "row" }} spacing={1}>
                   <Chip label="Programs: 6" variant="outlined" color="secondary" />
