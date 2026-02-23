@@ -405,6 +405,34 @@ function normalizeWalletAddress(value: unknown) {
   }
 }
 
+function extractErrorLogs(unknownError: unknown): string[] {
+  if (!unknownError || typeof unknownError !== "object") {
+    return [];
+  }
+  const errorRecord = unknownError as Record<string, unknown>;
+  const candidates: unknown[] = [
+    errorRecord.logs,
+    errorRecord.transactionLogs,
+    (errorRecord.cause as Record<string, unknown> | undefined)?.logs,
+    (errorRecord.simulationResponse as Record<string, unknown> | undefined)?.logs
+  ];
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) {
+      return candidate.filter((line): line is string => typeof line === "string");
+    }
+  }
+  return [];
+}
+
+function formatErrorWithLogs(unknownError: unknown, fallback: string) {
+  const message = unknownError instanceof Error ? unknownError.message : fallback;
+  const logs = extractErrorLogs(unknownError);
+  if (logs.length === 0) {
+    return message;
+  }
+  return `${message}\nLogs:\n${logs.slice(-12).join("\n")}`;
+}
+
 function resolveDistributorClaimPayloadFromManifest(
   payload: Record<string, unknown>,
   connectedWallet?: string
@@ -440,6 +468,8 @@ function resolveDistributorClaimPayloadFromManifest(
         claim.governanceProgram ??
         payload.governanceProgramId ??
         payload.governanceProgram,
+      governanceProgramVersion:
+        claim.governanceProgramVersion ?? payload.governanceProgramVersion,
       root: claim.root ?? claim.merkleRoot ?? payload.root ?? payload.merkleRoot,
       index: claim.index,
       amount: claim.amount,
@@ -472,6 +502,10 @@ function resolveDistributorClaimPayloadFromManifest(
           campaign.governanceProgram ??
           payload.governanceProgramId ??
           payload.governanceProgram,
+        governanceProgramVersion:
+          claim.governanceProgramVersion ??
+          campaign.governanceProgramVersion ??
+          payload.governanceProgramVersion,
         root:
           claim.root ??
           claim.merkleRoot ??
@@ -621,6 +655,10 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
     distributorWizardGovernanceProgramId,
     setDistributorWizardGovernanceProgramId
   ] = useState(DEFAULT_SPL_GOVERNANCE_PROGRAM_ID.toBase58());
+  const [
+    distributorWizardGovernanceProgramVersion,
+    setDistributorWizardGovernanceProgramVersion
+  ] = useState("3");
   const [distributorWizardDistributorPda, setDistributorWizardDistributorPda] =
     useState("");
   const [distributorWizardVaultAuthorityPda, setDistributorWizardVaultAuthorityPda] =
@@ -645,6 +683,8 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
   const [distributorClaimRealm, setDistributorClaimRealm] = useState("");
   const [distributorClaimGovernanceProgramId, setDistributorClaimGovernanceProgramId] =
     useState(DEFAULT_SPL_GOVERNANCE_PROGRAM_ID.toBase58());
+  const [distributorClaimGovernanceProgramVersion, setDistributorClaimGovernanceProgramVersion] =
+    useState("3");
   const [distributorClaimIndex, setDistributorClaimIndex] = useState("0");
   const [distributorClaimAmount, setDistributorClaimAmount] = useState("");
   const [distributorClaimProof, setDistributorClaimProof] = useState("");
@@ -1935,6 +1975,8 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
       const realmInput = distributorWizardRealm.trim();
       const governanceProgramInput =
         distributorWizardGovernanceProgramId.trim();
+      const governanceProgramVersionInput =
+        distributorWizardGovernanceProgramVersion.trim();
       const realm = realmInput ? new PublicKey(realmInput).toBase58() : undefined;
       const governanceProgramId = realm
         ? (
@@ -1942,6 +1984,15 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
               ? new PublicKey(governanceProgramInput)
               : DEFAULT_SPL_GOVERNANCE_PROGRAM_ID
           ).toBase58()
+        : undefined;
+      const governanceProgramVersion = realm
+        ? (() => {
+            const parsed = Number(governanceProgramVersionInput || "3");
+            if (!Number.isInteger(parsed) || parsed <= 0) {
+              throw new Error("Governance program version must be a positive integer.");
+            }
+            return parsed;
+          })()
         : undefined;
       const [distributor] = distributorClient.findDistributorPda(mint);
       const [vaultAuthority] = distributorClient.findVaultAuthorityPda(distributor);
@@ -1977,6 +2028,9 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
       setDistributorClaimGovernanceProgramId(
         governanceProgramId ?? DEFAULT_SPL_GOVERNANCE_PROGRAM_ID.toBase58()
       );
+      setDistributorClaimGovernanceProgramVersion(
+        governanceProgramVersion ? String(governanceProgramVersion) : "3"
+      );
       setDistributorWizardDistributorPda(distributor.toBase58());
       setDistributorWizardVaultAuthorityPda(vaultAuthority.toBase58());
       setDistributorWizardVaultAta(vaultAta.toBase58());
@@ -2004,6 +2058,9 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
             distributor: distributor.toBase58(),
             ...(realm ? { realm } : {}),
             ...(governanceProgramId ? { governanceProgramId } : {}),
+            ...(governanceProgramVersion
+              ? { governanceProgramVersion }
+              : {}),
             index: allocation.index.toString(),
             amount: allocation.amount.toString(),
             root: rootHex,
@@ -2026,6 +2083,9 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
             distributor: distributor.toBase58(),
             ...(realm ? { realm } : {}),
             ...(governanceProgramId ? { governanceProgramId } : {}),
+            ...(governanceProgramVersion
+              ? { governanceProgramVersion }
+              : {}),
             root: rootHex,
             claims: allocations.map((allocation, allocationIndex) => ({
               wallet: allocation.wallet.toBase58(),
@@ -2314,6 +2374,7 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
     const realm = payload.realm;
     const governanceProgramId =
       payload.governanceProgramId ?? payload.governanceProgram;
+    const governanceProgramVersion = payload.governanceProgramVersion;
 
     if (typeof mint !== "string") {
       throw new Error("Claim package requires `mint`.");
@@ -2333,6 +2394,17 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
     ) {
       throw new Error(
         "Claim package `governanceProgramId` must be a base58 address."
+      );
+    }
+    if (
+      governanceProgramVersion !== undefined &&
+      !(
+        typeof governanceProgramVersion === "number" ||
+        typeof governanceProgramVersion === "string"
+      )
+    ) {
+      throw new Error(
+        "Claim package `governanceProgramVersion` must be a positive integer."
       );
     }
     if (root !== undefined && typeof root !== "string") {
@@ -2372,6 +2444,17 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
         ? governanceProgramId
         : DEFAULT_SPL_GOVERNANCE_PROGRAM_ID.toBase58()
     );
+    if (governanceProgramVersion !== undefined && governanceProgramVersion !== "") {
+      const parsedVersion = Number(governanceProgramVersion);
+      if (!Number.isInteger(parsedVersion) || parsedVersion <= 0) {
+        throw new Error(
+          "Claim package `governanceProgramVersion` must be a positive integer."
+        );
+      }
+      setDistributorClaimGovernanceProgramVersion(String(parsedVersion));
+    } else {
+      setDistributorClaimGovernanceProgramVersion("3");
+    }
     setDistributorClaimIndex(parsedIndex.toString());
     setDistributorClaimAmount(parsedAmount.toString());
     setDistributorClaimProof(normalizedProofLines.join("\n"));
@@ -2533,6 +2616,18 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
       const proof = parseProofHexInput(distributorClaimProof);
       const realmInput = distributorClaimRealm.trim();
       const governanceProgramInput = distributorClaimGovernanceProgramId.trim();
+      const governanceProgramVersionInput =
+        distributorClaimGovernanceProgramVersion.trim();
+      const parsedGovernanceProgramVersion = governanceProgramVersionInput
+        ? Number(governanceProgramVersionInput)
+        : undefined;
+      if (
+        parsedGovernanceProgramVersion !== undefined &&
+        (!Number.isInteger(parsedGovernanceProgramVersion) ||
+          parsedGovernanceProgramVersion <= 0)
+      ) {
+        throw new Error("Governance program version must be a positive integer.");
+      }
 
       let instructions: TransactionInstruction[];
       let resolvedDistributor = distributorOverride ?? distributorClient.findDistributorPda(mint)[0];
@@ -2552,7 +2647,15 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
             realm: new PublicKey(realmInput),
             governanceProgramId: governanceProgramInput
               ? new PublicKey(governanceProgramInput)
-              : DEFAULT_SPL_GOVERNANCE_PROGRAM_ID
+              : DEFAULT_SPL_GOVERNANCE_PROGRAM_ID,
+            governanceProgramVersion: parsedGovernanceProgramVersion
+              ? parsedGovernanceProgramVersion
+              : (governanceProgramInput
+                    ? new PublicKey(governanceProgramInput)
+                    : DEFAULT_SPL_GOVERNANCE_PROGRAM_ID
+                  ).equals(DEFAULT_SPL_GOVERNANCE_PROGRAM_ID)
+                ? 3
+                : undefined
           });
         instructions = governanceBuild.instructions;
         if (governanceBuild.distributor) {
@@ -2583,9 +2686,25 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
         }
       }
 
-      const signature = await runWalletTransaction(
-        new Transaction().add(...instructions)
+      const transaction = new Transaction().add(...instructions);
+      transaction.feePayer = publicKey;
+      transaction.recentBlockhash = (
+        await connection.getLatestBlockhash("processed")
+      ).blockhash;
+      const simulation = await connection.simulateTransaction(
+        transaction,
+        undefined,
+        true
       );
+      if (simulation.value.err) {
+        const simError = new Error(
+          `Simulation failed: ${JSON.stringify(simulation.value.err)}`
+        );
+        (simError as Error & { logs?: string[] }).logs = simulation.value.logs ?? [];
+        throw simError;
+      }
+
+      const signature = await runWalletTransaction(transaction);
       const claimStatusSuffix = claimStatus
         ? ` Claim status PDA: ${claimStatus.toBase58()}.`
         : "";
@@ -2603,10 +2722,10 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
     } catch (unknownError) {
       setStatus({
         severity: "error",
-        message:
-          unknownError instanceof Error
-            ? unknownError.message
-            : "Failed to claim distributor tokens."
+        message: formatErrorWithLogs(
+          unknownError,
+          "Failed to claim distributor tokens."
+        )
       });
     } finally {
       setIsSubmitting(false);
@@ -4566,6 +4685,17 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
                       placeholder={DEFAULT_SPL_GOVERNANCE_PROGRAM_ID.toBase58()}
                     />
                     <TextField
+                      size="small"
+                      label="Governance Program Version (optional)"
+                      value={distributorWizardGovernanceProgramVersion}
+                      onChange={(event) => {
+                        setDistributorWizardGovernanceProgramVersion(
+                          event.target.value
+                        );
+                      }}
+                      placeholder="3"
+                    />
+                    <TextField
                       multiline
                       minRows={6}
                       size="small"
@@ -4597,7 +4727,11 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
                     <Typography variant="caption" color="text.secondary">
                       Generated values appear below and also prefill Distributor setup + claim sections.
                     </Typography>
-                    {status ? <Alert severity={status.severity}>{status.message}</Alert> : null}
+                    {status ? (
+                      <Alert severity={status.severity} sx={{ whiteSpace: "pre-wrap" }}>
+                        {status.message}
+                      </Alert>
+                    ) : null}
                     <TextField
                       size="small"
                       label="Generated Merkle Root"
