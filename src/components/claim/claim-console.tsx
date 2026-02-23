@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { PublicKey, Transaction, type TransactionInstruction } from "@solana/web3.js";
+import { TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID, getMint } from "@solana/spl-token";
 import {
   GrapeDistributorClient,
   computeLeaf,
@@ -27,6 +28,8 @@ type ClaimStatusState = {
   message: string;
   signature?: string;
 } | null;
+
+type MintDecimalsByMint = Record<string, number | null>;
 
 type ClaimCandidate = {
   id: string;
@@ -85,6 +88,19 @@ function parseOptionalPublicKey(value: unknown, label: string) {
     throw new Error(`${label} must be a base58 address string.`);
   }
   return new PublicKey(value);
+}
+
+function formatTokenAmount(rawAmount: bigint, decimals: number) {
+  if (decimals <= 0) {
+    return rawAmount.toString();
+  }
+  const precision = 10n ** BigInt(decimals);
+  const whole = rawAmount / precision;
+  const fraction = (rawAmount % precision)
+    .toString()
+    .padStart(decimals, "0")
+    .replace(/0+$/, "");
+  return fraction ? `${whole.toString()}.${fraction}` : whole.toString();
 }
 
 type ClaimPayload = Record<string, unknown>;
@@ -255,6 +271,9 @@ export function ClaimConsole() {
   const [isChecking, setIsChecking] = useState(false);
   const [isClaimingId, setIsClaimingId] = useState<string | null>(null);
   const [claims, setClaims] = useState<EligibleClaim[]>([]);
+  const [mintDecimalsByMint, setMintDecimalsByMint] = useState<MintDecimalsByMint>(
+    {}
+  );
   const [status, setStatus] = useState<ClaimStatusState>(null);
   const [lastCheckedAt, setLastCheckedAt] = useState<string | null>(null);
 
@@ -297,6 +316,7 @@ export function ClaimConsole() {
       const candidates = normalizeClaimCandidates(payload, distributorClient);
       if (candidates.length === 0) {
         setClaims([]);
+        setMintDecimalsByMint({});
         setLastCheckedAt(new Date().toLocaleString());
         setStatus({
           severity: "info",
@@ -342,6 +362,36 @@ export function ClaimConsole() {
       );
 
       setClaims(resolved);
+      const uniqueMints = Array.from(
+        new Set(resolved.map((entry) => entry.mint.toBase58()))
+      );
+      const decimalsPairs = await Promise.all(
+        uniqueMints.map(async (mintAddress) => {
+          const mint = new PublicKey(mintAddress);
+          try {
+            const mintState = await getMint(
+              connection,
+              mint,
+              "confirmed",
+              TOKEN_PROGRAM_ID
+            );
+            return [mintAddress, mintState.decimals] as const;
+          } catch {
+            try {
+              const mintState = await getMint(
+                connection,
+                mint,
+                "confirmed",
+                TOKEN_2022_PROGRAM_ID
+              );
+              return [mintAddress, mintState.decimals] as const;
+            } catch {
+              return [mintAddress, null] as const;
+            }
+          }
+        })
+      );
+      setMintDecimalsByMint(Object.fromEntries(decimalsPairs));
       setLastCheckedAt(new Date().toLocaleString());
       setStatus({
         severity: "success",
@@ -352,6 +402,7 @@ export function ClaimConsole() {
       });
     } catch (unknownError) {
       setClaims([]);
+      setMintDecimalsByMint({});
       setStatus({
         severity: "error",
         message:
@@ -362,7 +413,7 @@ export function ClaimConsole() {
     } finally {
       setIsChecking(false);
     }
-  }, [distributorClient, isFallbackManifestSource, manifestUrl, publicKey]);
+  }, [connection, distributorClient, isFallbackManifestSource, manifestUrl, publicKey]);
 
   const claimOne = async (entry: EligibleClaim) => {
     if (!publicKey) {
@@ -530,7 +581,19 @@ export function ClaimConsole() {
                         color="text.secondary"
                         sx={{ fontFamily: "var(--font-mono), monospace", wordBreak: "break-all" }}
                       >
-                        Amount (base units): {entry.amount.toString()}
+                        {(() => {
+                          const decimals = mintDecimalsByMint[entry.mint.toBase58()];
+                          if (typeof decimals === "number") {
+                            return (
+                              <>
+                                Amount: {formatTokenAmount(entry.amount, decimals)} token(s)
+                                {"  "}
+                                ({entry.amount.toString()} base units, {decimals} decimals)
+                              </>
+                            );
+                          }
+                          return <>Amount (base units): {entry.amount.toString()}</>;
+                        })()}
                       </Typography>
                       {entry.realm ? (
                         <Typography
