@@ -96,5 +96,6 @@ export const grapeLinks = {
   docs: "https://grape-governance.gitbook.io/",
   discord: "https://discord.gg/grapedao",
   github: "https://github.com/Grape-Labs",
-  x: "https://x.com/grapeprotocol"
+  x: "https://x.com/grapeprotocol",
+  claimManifest: "https://gateway.irys.xyz/2WHMGA4KEBefVmyAJCw9QvHXGcMhewieg33tzV547WKR"
 };
