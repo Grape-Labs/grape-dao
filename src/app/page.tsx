@@ -57,19 +57,19 @@ export default function Home() {
     {
       title: "Create Your OG Reputation Space",
       detail:
-        "Start at vine.governance.so, customize your branding, and launch a unique OG Reputation Space landing page for your community.",
+        "Create your Space, set branding, and publish your on-chain reputation hub for your community.",
       href: "https://vine.governance.so",
       ctaLabel: "Open vine.governance.so"
     },
     {
-      title: "Set Up How Reputation Is Rewarded",
+      title: "Establish Your Reputation Layer",
       detail:
-        "Configure the reputation rules, criteria, and contribution pathways your community will use for rewards."
+        "Reputation is your community’s trust infrastructure. Define how influence is earned, verified, and preserved — across manual awards, Discord automation, on-chain actions, and seasonal rules."
     },
     {
       title: "Set Up Your Discord Bot",
       detail:
-        "Set up your Discord bot to automate workflows and start awarding reputation to your community."
+        "Deploy your Discord bot to automate awards, recognize participation, and connect your community activity directly to on-chain reputation."
     }
   ];
 
@@ -231,14 +231,10 @@ export default function Home() {
                 Getting Started
               </Typography>
               <Typography variant="h2" sx={{ fontSize: { xs: "1.35rem", md: "1.75rem" } }}>
-                Start by Creating Your OG Reputation Space
+                Launch Your Reputation Layer
               </Typography>
               <Typography color="text.secondary">
-                Begin at{" "}
-                <Box component="span" sx={{ color: "primary.light" }}>
-                  vine.governance.so
-                </Box>{" "}
-                to create your OG Reputation Space and launch your community setup.
+                Reputation is an on-chain record of contribution that can power access, rewards, and governance.
               </Typography>
               <Grid container spacing={1.2}>
                 {gettingStartedSteps.map((step, index) => (
