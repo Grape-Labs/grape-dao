@@ -134,6 +134,10 @@ const TOKEN_PROGRAM_OPTIONS = [
   { label: "SPL Token 2022", value: TOKEN_2022_PROGRAM_ID.toBase58() }
 ];
 
+const DEFAULT_SPL_GOVERNANCE_PROGRAM_ID = new PublicKey(
+  "GovER5Lthms3bLBqWub97yVrMmEogzX7xNjdXpPPCVZw"
+);
+
 function parseAmountToBaseUnits(input: string, decimals: number): bigint {
   const normalized = input.trim();
   if (!normalized) {
@@ -430,6 +434,12 @@ function resolveDistributorClaimPayloadFromManifest(
       mint: claim.mint ?? payload.mint,
       vault: claim.vault ?? payload.vault,
       distributor: claim.distributor ?? payload.distributor,
+      realm: claim.realm ?? payload.realm,
+      governanceProgramId:
+        claim.governanceProgramId ??
+        claim.governanceProgram ??
+        payload.governanceProgramId ??
+        payload.governanceProgram,
       root: claim.root ?? claim.merkleRoot ?? payload.root ?? payload.merkleRoot,
       index: claim.index,
       amount: claim.amount,
@@ -454,6 +464,14 @@ function resolveDistributorClaimPayloadFromManifest(
         mint: claim.mint ?? campaign.mint,
         vault: claim.vault ?? campaign.vault,
         distributor: claim.distributor ?? campaign.distributor,
+        realm: claim.realm ?? campaign.realm ?? payload.realm,
+        governanceProgramId:
+          claim.governanceProgramId ??
+          claim.governanceProgram ??
+          campaign.governanceProgramId ??
+          campaign.governanceProgram ??
+          payload.governanceProgramId ??
+          payload.governanceProgram,
         root:
           claim.root ??
           claim.merkleRoot ??
@@ -619,6 +637,9 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
   const [distributorClaimMint, setDistributorClaimMint] = useState("");
   const [distributorClaimVault, setDistributorClaimVault] = useState("");
   const [distributorClaimDistributor, setDistributorClaimDistributor] = useState("");
+  const [distributorClaimRealm, setDistributorClaimRealm] = useState("");
+  const [distributorClaimGovernanceProgramId, setDistributorClaimGovernanceProgramId] =
+    useState(DEFAULT_SPL_GOVERNANCE_PROGRAM_ID.toBase58());
   const [distributorClaimIndex, setDistributorClaimIndex] = useState("0");
   const [distributorClaimAmount, setDistributorClaimAmount] = useState("");
   const [distributorClaimProof, setDistributorClaimProof] = useState("");
@@ -2247,6 +2268,9 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
     const root = payload.root ?? payload.merkleRoot;
     const proof = payload.proof;
     const distributor = payload.distributor;
+    const realm = payload.realm;
+    const governanceProgramId =
+      payload.governanceProgramId ?? payload.governanceProgram;
 
     if (typeof mint !== "string") {
       throw new Error("Claim package requires `mint`.");
@@ -2256,6 +2280,17 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
     }
     if (distributor !== undefined && typeof distributor !== "string") {
       throw new Error("Claim package `distributor` must be a base58 address.");
+    }
+    if (realm !== undefined && typeof realm !== "string") {
+      throw new Error("Claim package `realm` must be a base58 address.");
+    }
+    if (
+      governanceProgramId !== undefined &&
+      typeof governanceProgramId !== "string"
+    ) {
+      throw new Error(
+        "Claim package `governanceProgramId` must be a base58 address."
+      );
     }
     if (root !== undefined && typeof root !== "string") {
       throw new Error("Claim package `root` must be a hex string.");
@@ -2288,6 +2323,12 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
     if (typeof distributor === "string") {
       setDistributorClaimDistributor(distributor);
     }
+    setDistributorClaimRealm(typeof realm === "string" ? realm : "");
+    setDistributorClaimGovernanceProgramId(
+      typeof governanceProgramId === "string"
+        ? governanceProgramId
+        : DEFAULT_SPL_GOVERNANCE_PROGRAM_ID.toBase58()
+    );
     setDistributorClaimIndex(parsedIndex.toString());
     setDistributorClaimAmount(parsedAmount.toString());
     setDistributorClaimProof(normalizedProofLines.join("\n"));
@@ -2425,32 +2466,73 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
         throw new Error("Claim amount must be greater than zero.");
       }
       const proof = parseProofHexInput(distributorClaimProof);
-      const claimBuild = await distributorClient.buildClaimInstructions({
-        claimant: publicKey,
-        mint,
-        vault,
-        index,
-        amount,
-        proof,
-        distributor: distributorOverride
-      });
+      const realmInput = distributorClaimRealm.trim();
+      const governanceProgramInput = distributorClaimGovernanceProgramId.trim();
+
+      let instructions: TransactionInstruction[];
+      let resolvedDistributor = distributorOverride ?? distributorClient.findDistributorPda(mint)[0];
+      let claimStatus: PublicKey | undefined;
+      let tokenOwnerRecord: PublicKey | undefined;
+
+      if (realmInput) {
+        const governanceBuild =
+          await distributorClient.buildClaimAndDepositToRealmInstructions({
+            claimant: publicKey,
+            mint,
+            vault,
+            index,
+            amount,
+            proof,
+            distributor: distributorOverride,
+            realm: new PublicKey(realmInput),
+            governanceProgramId: governanceProgramInput
+              ? new PublicKey(governanceProgramInput)
+              : DEFAULT_SPL_GOVERNANCE_PROGRAM_ID
+          });
+        instructions = governanceBuild.instructions;
+        if (governanceBuild.distributor) {
+          resolvedDistributor = governanceBuild.distributor;
+        }
+        claimStatus = governanceBuild.claimStatus;
+        tokenOwnerRecord = governanceBuild.tokenOwnerRecord;
+      } else {
+        const claimBuild = await distributorClient.buildClaimInstructions({
+          claimant: publicKey,
+          mint,
+          vault,
+          index,
+          amount,
+          proof,
+          distributor: distributorOverride
+        });
+        instructions = claimBuild.instructions;
+        resolvedDistributor = claimBuild.distributor;
+        claimStatus = claimBuild.claimStatus;
+      }
 
       if (distributorClaimVerifyLocal) {
         const root = parseHex32(distributorClaimRoot, "Claim merkle root");
-        const leaf = computeLeaf(claimBuild.distributor, publicKey, index, amount);
+        const leaf = computeLeaf(resolvedDistributor, publicKey, index, amount);
         if (!verifyMerkleProofSorted(leaf, proof, root)) {
           throw new Error("Local merkle proof verification failed.");
         }
       }
 
       const signature = await runWalletTransaction(
-        new Transaction().add(...claimBuild.instructions)
+        new Transaction().add(...instructions)
       );
+      const claimStatusSuffix = claimStatus
+        ? ` Claim status PDA: ${claimStatus.toBase58()}.`
+        : "";
+      const governanceSuffix = tokenOwnerRecord
+        ? ` Token owner record: ${tokenOwnerRecord.toBase58()}.`
+        : "";
       setStatus({
         severity: "success",
         message:
-          `Claim submitted for distributor ${claimBuild.distributor.toBase58()}. ` +
-          `Claim status PDA: ${claimBuild.claimStatus.toBase58()}.`,
+          realmInput
+            ? `Claim + governance deposit submitted for distributor ${resolvedDistributor.toBase58()}.${claimStatusSuffix}${governanceSuffix}`
+            : `Claim submitted for distributor ${resolvedDistributor.toBase58()}.${claimStatusSuffix}`,
         signature
       });
     } catch (unknownError) {
@@ -4771,6 +4853,23 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
                       onChange={(event) => {
                         setDistributorClaimDistributor(event.target.value);
                       }}
+                    />
+                    <TextField
+                      size="small"
+                      label="Governance Realm (optional, enables claim + deposit)"
+                      value={distributorClaimRealm}
+                      onChange={(event) => {
+                        setDistributorClaimRealm(event.target.value);
+                      }}
+                    />
+                    <TextField
+                      size="small"
+                      label="Governance Program ID (optional)"
+                      value={distributorClaimGovernanceProgramId}
+                      onChange={(event) => {
+                        setDistributorClaimGovernanceProgramId(event.target.value);
+                      }}
+                      placeholder={DEFAULT_SPL_GOVERNANCE_PROGRAM_ID.toBase58()}
                     />
                     <Stack direction={{ xs: "column", md: "row" }} spacing={1}>
                       <TextField
