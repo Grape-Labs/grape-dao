@@ -95,5 +95,6 @@ export const grapeProducts: GrapeProduct[] = [
 export const grapeLinks = {
   docs: "https://grape-governance.gitbook.io/",
   discord: "https://discord.gg/grapedao",
-  github: "https://github.com/Grape-Labs"
+  github: "https://github.com/Grape-Labs",
+  x: "https://x.com/grapeprotocol"
 };

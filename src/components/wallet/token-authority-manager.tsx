@@ -37,6 +37,12 @@ import {
   getUpdateMetadataAccountV2InstructionDataSerializer
 } from "@metaplex-foundation/mpl-token-metadata";
 import { publicKey as umiPublicKey } from "@metaplex-foundation/umi";
+import {
+  GrapeDistributorClient,
+  GRAPE_DISTRIBUTOR_PROGRAM_ID,
+  computeLeaf,
+  verifyMerkleProofSorted
+} from "grape-distributor-sdk";
 import { Buffer } from "buffer";
 import {
   Accordion,
@@ -192,6 +198,36 @@ function parseAtomicAmount(value: unknown): bigint {
     return BigInt(value.toString());
   }
   throw new Error("Unable to parse atomic amount.");
+}
+
+function parseHexBytes(input: string, label: string) {
+  const normalized = input.trim().toLowerCase().replace(/^0x/, "");
+  if (!normalized) {
+    throw new Error(`${label} is required.`);
+  }
+  if (!/^[0-9a-f]+$/.test(normalized)) {
+    throw new Error(`${label} must be a hex string.`);
+  }
+  if (normalized.length % 2 !== 0) {
+    throw new Error(`${label} must have an even number of hex characters.`);
+  }
+  return Uint8Array.from(Buffer.from(normalized, "hex"));
+}
+
+function parseHex32(input: string, label: string) {
+  const bytes = parseHexBytes(input, label);
+  if (bytes.length !== 32) {
+    throw new Error(`${label} must be exactly 32 bytes.`);
+  }
+  return bytes;
+}
+
+function parseProofHexInput(input: string) {
+  const lines = input
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && !line.startsWith("#"));
+  return lines.map((line, index) => parseHex32(line, `Proof line ${index + 1}`));
 }
 
 function normalizeBaseUrl(value: string) {
@@ -356,6 +392,24 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
   const [mintAmount, setMintAmount] = useState("");
   const [distributionMintAddress, setDistributionMintAddress] = useState("");
   const [distributionRecipients, setDistributionRecipients] = useState("");
+  const [distributorIssueMint, setDistributorIssueMint] = useState("");
+  const [distributorIssueVault, setDistributorIssueVault] = useState("");
+  const [distributorIssueMerkleRoot, setDistributorIssueMerkleRoot] = useState("");
+  const [distributorIssueStartTs, setDistributorIssueStartTs] = useState("0");
+  const [distributorIssueEndTs, setDistributorIssueEndTs] = useState(
+    "253402300799"
+  );
+  const [distributorSetRootDistributor, setDistributorSetRootDistributor] =
+    useState("");
+  const [distributorSetRootValue, setDistributorSetRootValue] = useState("");
+  const [distributorClaimMint, setDistributorClaimMint] = useState("");
+  const [distributorClaimVault, setDistributorClaimVault] = useState("");
+  const [distributorClaimIndex, setDistributorClaimIndex] = useState("0");
+  const [distributorClaimAmount, setDistributorClaimAmount] = useState("");
+  const [distributorClaimProof, setDistributorClaimProof] = useState("");
+  const [distributorClaimRoot, setDistributorClaimRoot] = useState("");
+  const [distributorClaimVerifyLocal, setDistributorClaimVerifyLocal] =
+    useState(true);
 
   const [authorityMint, setAuthorityMint] = useState("");
   const [authorityType, setAuthorityType] = useState<"mint" | "freeze">("mint");
@@ -402,6 +456,10 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
     );
     return matchedPreset ? matchedPreset.value : "custom";
   }, [tokenProgramInput]);
+  const distributorClient = useMemo(
+    () => new GrapeDistributorClient(connection),
+    [connection]
+  );
 
   useEffect(() => {
     if (!isToken2022Program && mintCloseAuthorityMode !== "disabled") {
@@ -1561,6 +1619,155 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
           unknownError instanceof Error
             ? unknownError.message
             : "Failed to mint and distribute tokens."
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const initializeDistributor = async () => {
+    if (!publicKey) {
+      setStatus({ severity: "error", message: "Connect your wallet first." });
+      return;
+    }
+
+    setIsSubmitting(true);
+    setStatus(null);
+    try {
+      const mint = new PublicKey(distributorIssueMint.trim());
+      const vault = new PublicKey(distributorIssueVault.trim());
+      const merkleRoot = parseHex32(distributorIssueMerkleRoot, "Merkle root");
+      const startTs = BigInt(distributorIssueStartTs.trim());
+      const endTs = BigInt(distributorIssueEndTs.trim());
+      if (endTs < startTs) {
+        throw new Error("End timestamp must be greater than or equal to start.");
+      }
+
+      const { instruction, distributor, vaultAuthority } =
+        distributorClient.buildInitializeDistributorInstruction({
+          authority: publicKey,
+          mint,
+          vault,
+          merkleRoot,
+          startTs,
+          endTs
+        });
+
+      const signature = await runWalletTransaction(
+        new Transaction().add(instruction)
+      );
+      setDistributorSetRootDistributor(distributor.toBase58());
+      setDistributorClaimMint((current) => current || mint.toBase58());
+      setDistributorClaimVault((current) => current || vault.toBase58());
+      setStatus({
+        severity: "success",
+        message:
+          `Distributor initialized: ${distributor.toBase58()}. ` +
+          `Vault authority: ${vaultAuthority.toBase58()}.`,
+        signature
+      });
+    } catch (unknownError) {
+      setStatus({
+        severity: "error",
+        message:
+          unknownError instanceof Error
+            ? unknownError.message
+            : "Failed to initialize distributor."
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const setDistributorRoot = async () => {
+    if (!publicKey) {
+      setStatus({ severity: "error", message: "Connect your wallet first." });
+      return;
+    }
+
+    setIsSubmitting(true);
+    setStatus(null);
+    try {
+      const distributor = new PublicKey(distributorSetRootDistributor.trim());
+      const newRoot = parseHex32(distributorSetRootValue, "New merkle root");
+      const instruction = distributorClient.buildSetRootInstruction({
+        authority: publicKey,
+        distributor,
+        newRoot
+      });
+
+      const signature = await runWalletTransaction(
+        new Transaction().add(instruction)
+      );
+      setStatus({
+        severity: "success",
+        message: `Distributor root updated for ${distributor.toBase58()}.`,
+        signature
+      });
+    } catch (unknownError) {
+      setStatus({
+        severity: "error",
+        message:
+          unknownError instanceof Error
+            ? unknownError.message
+            : "Failed to update distributor root."
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const claimDistributorTokens = async () => {
+    if (!publicKey) {
+      setStatus({ severity: "error", message: "Connect your wallet first." });
+      return;
+    }
+
+    setIsSubmitting(true);
+    setStatus(null);
+    try {
+      const mint = new PublicKey(distributorClaimMint.trim());
+      const vault = new PublicKey(distributorClaimVault.trim());
+      const index = BigInt(distributorClaimIndex.trim());
+      const amount = BigInt(distributorClaimAmount.trim());
+      if (amount <= 0n) {
+        throw new Error("Claim amount must be greater than zero.");
+      }
+      const proof = parseProofHexInput(distributorClaimProof);
+      const claimBuild = await distributorClient.buildClaimInstructions({
+        claimant: publicKey,
+        mint,
+        vault,
+        index,
+        amount,
+        proof
+      });
+
+      if (distributorClaimVerifyLocal) {
+        const root = parseHex32(distributorClaimRoot, "Claim merkle root");
+        const leaf = computeLeaf(claimBuild.distributor, publicKey, index, amount);
+        if (!verifyMerkleProofSorted(leaf, proof, root)) {
+          throw new Error("Local merkle proof verification failed.");
+        }
+      }
+
+      const signature = await runWalletTransaction(
+        new Transaction().add(...claimBuild.instructions)
+      );
+      setStatus({
+        severity: "success",
+        message:
+          `Claim submitted for distributor ${claimBuild.distributor.toBase58()}. ` +
+          `Claim status PDA: ${claimBuild.claimStatus.toBase58()}.`,
+        signature
+      });
+    } catch (unknownError) {
+      setStatus({
+        severity: "error",
+        message:
+          unknownError instanceof Error
+            ? unknownError.message
+            : "Failed to claim distributor tokens."
       });
     } finally {
       setIsSubmitting(false);
@@ -3391,6 +3598,243 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
                 >
                   Update URI
                 </Button>
+                  </Stack>
+                </CardContent>
+              </Card>
+            </AccordionDetails>
+          </Accordion>
+
+          <Accordion
+            expanded={expandedOperation === "grape-distributor-issue"}
+            onChange={(_event, isExpanded) => {
+              setExpandedOperation(isExpanded ? "grape-distributor-issue" : false);
+            }}
+            disableGutters
+            sx={{
+              bgcolor: "transparent",
+              border: "1px solid",
+              borderColor: "divider",
+              borderRadius: "8px !important",
+              order: 13
+            }}
+          >
+            <AccordionSummary
+              expandIcon={
+                <Typography color="text.secondary">
+                  {expandedOperation === "grape-distributor-issue" ? "−" : "+"}
+                </Typography>
+              }
+            >
+              <Typography variant="subtitle2">
+                13. Grape Distributor (Issue/Admin)
+              </Typography>
+            </AccordionSummary>
+            <AccordionDetails sx={{ pt: 0.5 }}>
+              <Card variant="outlined" sx={{ borderRadius: 1.5 }}>
+                <CardContent sx={{ p: 1.2 }}>
+                  <Stack spacing={1}>
+                    <Typography variant="subtitle2">
+                      Grape Distributor Program Setup
+                    </Typography>
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      sx={{ wordBreak: "break-all", fontFamily: "var(--font-mono), monospace" }}
+                    >
+                      Program: {GRAPE_DISTRIBUTOR_PROGRAM_ID.toBase58()}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Initialize distributor once, then rotate roots as claims change. Root must be 32-byte hex.
+                    </Typography>
+                    <TextField
+                      size="small"
+                      label="Mint Address"
+                      value={distributorIssueMint}
+                      onChange={(event) => {
+                        setDistributorIssueMint(event.target.value);
+                      }}
+                    />
+                    <TextField
+                      size="small"
+                      label="Vault Token Account"
+                      value={distributorIssueVault}
+                      onChange={(event) => {
+                        setDistributorIssueVault(event.target.value);
+                      }}
+                    />
+                    <TextField
+                      size="small"
+                      label="Merkle Root (32-byte hex)"
+                      value={distributorIssueMerkleRoot}
+                      onChange={(event) => {
+                        setDistributorIssueMerkleRoot(event.target.value);
+                      }}
+                      placeholder="0x..."
+                    />
+                    <Stack direction={{ xs: "column", md: "row" }} spacing={1}>
+                      <TextField
+                        size="small"
+                        label="Start Timestamp (unix)"
+                        value={distributorIssueStartTs}
+                        onChange={(event) => {
+                          setDistributorIssueStartTs(event.target.value);
+                        }}
+                      />
+                      <TextField
+                        size="small"
+                        label="End Timestamp (unix)"
+                        value={distributorIssueEndTs}
+                        onChange={(event) => {
+                          setDistributorIssueEndTs(event.target.value);
+                        }}
+                      />
+                    </Stack>
+                    <Button
+                      variant="contained"
+                      onClick={() => {
+                        void initializeDistributor();
+                      }}
+                      disabled={!connected || isSubmitting}
+                    >
+                      Initialize Distributor
+                    </Button>
+                    <TextField
+                      size="small"
+                      label="Distributor PDA (for Set Root)"
+                      value={distributorSetRootDistributor}
+                      onChange={(event) => {
+                        setDistributorSetRootDistributor(event.target.value);
+                      }}
+                    />
+                    <TextField
+                      size="small"
+                      label="New Merkle Root (32-byte hex)"
+                      value={distributorSetRootValue}
+                      onChange={(event) => {
+                        setDistributorSetRootValue(event.target.value);
+                      }}
+                      placeholder="0x..."
+                    />
+                    <Button
+                      variant="outlined"
+                      onClick={() => {
+                        void setDistributorRoot();
+                      }}
+                      disabled={!connected || isSubmitting}
+                    >
+                      Set Root
+                    </Button>
+                  </Stack>
+                </CardContent>
+              </Card>
+            </AccordionDetails>
+          </Accordion>
+
+          <Accordion
+            expanded={expandedOperation === "grape-distributor-claim"}
+            onChange={(_event, isExpanded) => {
+              setExpandedOperation(isExpanded ? "grape-distributor-claim" : false);
+            }}
+            disableGutters
+            sx={{
+              bgcolor: "transparent",
+              border: "1px solid",
+              borderColor: "divider",
+              borderRadius: "8px !important",
+              order: 14
+            }}
+          >
+            <AccordionSummary
+              expandIcon={
+                <Typography color="text.secondary">
+                  {expandedOperation === "grape-distributor-claim" ? "−" : "+"}
+                </Typography>
+              }
+            >
+              <Typography variant="subtitle2">14. Grape Distributor (Claim/User)</Typography>
+            </AccordionSummary>
+            <AccordionDetails sx={{ pt: 0.5 }}>
+              <Card variant="outlined" sx={{ borderRadius: 1.5 }}>
+                <CardContent sx={{ p: 1.2 }}>
+                  <Stack spacing={1}>
+                    <Typography variant="subtitle2">Claim Tokens From Distributor</Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Proof nodes are one 32-byte hex string per line. Amount uses raw base units.
+                    </Typography>
+                    <TextField
+                      size="small"
+                      label="Mint Address"
+                      value={distributorClaimMint}
+                      onChange={(event) => {
+                        setDistributorClaimMint(event.target.value);
+                      }}
+                    />
+                    <TextField
+                      size="small"
+                      label="Vault Token Account"
+                      value={distributorClaimVault}
+                      onChange={(event) => {
+                        setDistributorClaimVault(event.target.value);
+                      }}
+                    />
+                    <Stack direction={{ xs: "column", md: "row" }} spacing={1}>
+                      <TextField
+                        size="small"
+                        label="Index (u64)"
+                        value={distributorClaimIndex}
+                        onChange={(event) => {
+                          setDistributorClaimIndex(event.target.value);
+                        }}
+                      />
+                      <TextField
+                        size="small"
+                        label="Amount (base units)"
+                        value={distributorClaimAmount}
+                        onChange={(event) => {
+                          setDistributorClaimAmount(event.target.value);
+                        }}
+                      />
+                    </Stack>
+                    <TextField
+                      multiline
+                      minRows={5}
+                      size="small"
+                      label="Merkle Proof Nodes (32-byte hex, one per line)"
+                      value={distributorClaimProof}
+                      onChange={(event) => {
+                        setDistributorClaimProof(event.target.value);
+                      }}
+                      placeholder="0xabc...\n0xdef..."
+                    />
+                    <FormControlLabel
+                      control={
+                        <Checkbox
+                          checked={distributorClaimVerifyLocal}
+                          onChange={(event) => {
+                            setDistributorClaimVerifyLocal(event.target.checked);
+                          }}
+                        />
+                      }
+                      label="Verify merkle proof locally before sending transaction"
+                    />
+                    <TextField
+                      size="small"
+                      label="Merkle Root (32-byte hex, required if local verify is enabled)"
+                      value={distributorClaimRoot}
+                      onChange={(event) => {
+                        setDistributorClaimRoot(event.target.value);
+                      }}
+                      placeholder="0x..."
+                    />
+                    <Button
+                      variant="contained"
+                      onClick={() => {
+                        void claimDistributorTokens();
+                      }}
+                      disabled={!connected || isSubmitting}
+                    >
+                      Claim Tokens
+                    </Button>
                   </Stack>
                 </CardContent>
               </Card>
