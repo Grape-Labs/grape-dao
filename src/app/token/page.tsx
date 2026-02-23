@@ -43,6 +43,9 @@ export default function TokenPage() {
               <Button variant="outlined" color="primary" href="/nft">
                 NFT Tools
               </Button>
+              <Button variant="outlined" color="primary" href="/faq">
+                FAQ
+              </Button>
               <Button variant="outlined" color="secondary" href={grapeLinks.docs} target="_blank" rel="noreferrer">
                 Docs
               </Button>
