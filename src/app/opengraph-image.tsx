@@ -46,7 +46,7 @@ export default function OpengraphImage() {
           </div>
         </div>
         <div style={{ display: "flex", gap: "14px", flexWrap: "wrap" }}>
-          {["Programs: 4", "Governance UI", "Identity Console"].map((pill) => (
+          {["Programs: 6", "Governance UI", "Identity Console"].map((pill) => (
             <div
               key={pill}
               style={{

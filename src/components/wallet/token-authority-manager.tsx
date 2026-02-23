@@ -11,11 +11,14 @@ import {
   TOKEN_2022_PROGRAM_ID,
   TOKEN_PROGRAM_ID,
   createAssociatedTokenAccountInstruction,
+  createCloseAccountInstruction,
   createInitializeMintCloseAuthorityInstruction,
   createInitializeMint2Instruction,
   createMintToInstruction,
   createSetAuthorityInstruction,
   getAssociatedTokenAddressSync,
+  getMint,
+  getMintCloseAuthority,
   getMintLen
 } from "@solana/spl-token";
 import {
@@ -41,10 +44,12 @@ import {
   AccordionSummary,
   Alert,
   Button,
+  Checkbox,
   CircularProgress,
   Card,
   CardContent,
   Chip,
+  FormControlLabel,
   MenuItem,
   Stack,
   TextField,
@@ -320,6 +325,9 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
     "disabled" | "self" | "custom"
   >("disabled");
   const [customMintCloseAuthority, setCustomMintCloseAuthority] = useState("");
+  const [closeMintAddress, setCloseMintAddress] = useState("");
+  const [closeMintDestination, setCloseMintDestination] = useState("");
+  const [closeMintAcknowledged, setCloseMintAcknowledged] = useState(false);
   const [createdMint, setCreatedMint] = useState("");
   const [createdMints, setCreatedMints] = useState<string[]>([]);
   const [authorityMints, setAuthorityMints] = useState<AuthorityMint[]>([]);
@@ -375,6 +383,9 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
   const [expandedMetadataUpload, setExpandedMetadataUpload] = useState<
     "image" | "json" | false
   >("image");
+  const [expandedOperation, setExpandedOperation] = useState<string | false>(
+    "authority-inventory"
+  );
 
   const activeTokenProgramPublicKey = useMemo(
     () => new PublicKey(tokenProgramId),
@@ -1250,6 +1261,88 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
     }
   };
 
+  const closeMintAccount = async () => {
+    if (!publicKey) {
+      setStatus({ severity: "error", message: "Connect your wallet first." });
+      return;
+    }
+
+    setIsSubmitting(true);
+    setStatus(null);
+    try {
+      if (!closeMintAcknowledged) {
+        throw new Error("Confirm the close-mint warning before submitting.");
+      }
+
+      const mintPublicKey = new PublicKey(closeMintAddress.trim());
+      const destinationPublicKey = new PublicKey(
+        (closeMintDestination.trim() || publicKey.toBase58()).trim()
+      );
+      const mintInfo = await connection.getAccountInfo(mintPublicKey, "confirmed");
+      if (!mintInfo) {
+        throw new Error("Mint account was not found.");
+      }
+      if (!mintInfo.owner.equals(TOKEN_2022_PROGRAM_ID)) {
+        throw new Error(
+          "Only Token-2022 mints with mint close authority can be closed."
+        );
+      }
+
+      const mint = await getMint(
+        connection,
+        mintPublicKey,
+        "confirmed",
+        TOKEN_2022_PROGRAM_ID
+      );
+      const mintCloseAuthority = getMintCloseAuthority(mint);
+      if (!mintCloseAuthority) {
+        throw new Error(
+          "Mint close authority extension is missing for this mint."
+        );
+      }
+      if (!mintCloseAuthority.closeAuthority.equals(publicKey)) {
+        throw new Error(
+          `Connected wallet is not mint close authority. Current close authority: ${mintCloseAuthority.closeAuthority.toBase58()}`
+        );
+      }
+      if (mint.supply > 0n) {
+        throw new Error(
+          "Mint supply must be zero before closing. Burn outstanding supply first."
+        );
+      }
+
+      const signature = await runWalletTransaction(
+        new Transaction().add(
+          createCloseAccountInstruction(
+            mintPublicKey,
+            destinationPublicKey,
+            publicKey,
+            [],
+            TOKEN_2022_PROGRAM_ID
+          )
+        )
+      );
+      setStatus({
+        severity: "success",
+        message: `Closed mint ${mintPublicKey.toBase58()} and sent rent reclaim to ${destinationPublicKey.toBase58()}.`,
+        signature
+      });
+      setCloseMintAddress("");
+      setCloseMintAcknowledged(false);
+      void loadAuthorityMints();
+    } catch (unknownError) {
+      setStatus({
+        severity: "error",
+        message:
+          unknownError instanceof Error
+            ? unknownError.message
+            : "Failed to close mint account."
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const mintTokens = async () => {
     if (!publicKey) {
       setStatus({ severity: "error", message: "Connect your wallet first." });
@@ -2034,9 +2127,33 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
             <Alert severity="info">Connect your wallet to use token authority actions.</Alert>
           ) : null}
 
-          <Card variant="outlined" sx={{ borderRadius: 1.5 }}>
-            <CardContent sx={{ p: 1.2 }}>
-              <Stack spacing={1}>
+          <Accordion
+            expanded={expandedOperation === "authority-mints"}
+            onChange={(_event, isExpanded) => {
+              setExpandedOperation(isExpanded ? "authority-mints" : false);
+            }}
+            disableGutters
+            sx={{
+              bgcolor: "transparent",
+              border: "1px solid",
+              borderColor: "divider",
+              borderRadius: "8px !important",
+              order: 5
+            }}
+          >
+            <AccordionSummary
+              expandIcon={
+                <Typography color="text.secondary">
+                  {expandedOperation === "authority-mints" ? "−" : "+"}
+                </Typography>
+              }
+            >
+              <Typography variant="subtitle2">5. Authority Mints</Typography>
+            </AccordionSummary>
+            <AccordionDetails sx={{ pt: 0.5 }}>
+              <Card variant="outlined" sx={{ borderRadius: 1.5 }}>
+                <CardContent sx={{ p: 1.2 }}>
+                  <Stack spacing={1}>
                 <Stack direction="row" justifyContent="space-between" alignItems="center">
                   <Typography variant="subtitle2">Authority Mints</Typography>
                   <Button
@@ -2176,13 +2293,39 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
                     ))}
                   </Stack>
                 ) : null}
-              </Stack>
-            </CardContent>
-          </Card>
+                  </Stack>
+                </CardContent>
+              </Card>
+            </AccordionDetails>
+          </Accordion>
 
-          <Card variant="outlined" sx={{ borderRadius: 1.5 }}>
-            <CardContent sx={{ p: 1.2 }}>
-              <Stack spacing={1}>
+          <Accordion
+            expanded={expandedOperation === "authority-inventory"}
+            onChange={(_event, isExpanded) => {
+              setExpandedOperation(isExpanded ? "authority-inventory" : false);
+            }}
+            disableGutters
+            sx={{
+              bgcolor: "transparent",
+              border: "1px solid",
+              borderColor: "divider",
+              borderRadius: "8px !important",
+              order: 1
+            }}
+          >
+            <AccordionSummary
+              expandIcon={
+                <Typography color="text.secondary">
+                  {expandedOperation === "authority-inventory" ? "−" : "+"}
+                </Typography>
+              }
+            >
+              <Typography variant="subtitle2">1. Authority Inventory + Risk Scanner</Typography>
+            </AccordionSummary>
+            <AccordionDetails sx={{ pt: 0.5 }}>
+              <Card variant="outlined" sx={{ borderRadius: 1.5 }}>
+                <CardContent sx={{ p: 1.2 }}>
+                  <Stack spacing={1}>
                 <Stack direction="row" justifyContent="space-between" alignItems="center">
                   <Typography variant="subtitle2">Authority Inventory + Risk Scanner</Typography>
                   <Stack direction="row" spacing={0.8}>
@@ -2297,13 +2440,39 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
                     ))}
                   </Stack>
                 ) : null}
-              </Stack>
-            </CardContent>
-          </Card>
+                  </Stack>
+                </CardContent>
+              </Card>
+            </AccordionDetails>
+          </Accordion>
 
-          <Card variant="outlined" sx={{ borderRadius: 1.5 }}>
-            <CardContent sx={{ p: 1.2 }}>
-              <Stack spacing={1}>
+          <Accordion
+            expanded={expandedOperation === "bulk-rotation"}
+            onChange={(_event, isExpanded) => {
+              setExpandedOperation(isExpanded ? "bulk-rotation" : false);
+            }}
+            disableGutters
+            sx={{
+              bgcolor: "transparent",
+              border: "1px solid",
+              borderColor: "divider",
+              borderRadius: "8px !important",
+              order: 2
+            }}
+          >
+            <AccordionSummary
+              expandIcon={
+                <Typography color="text.secondary">
+                  {expandedOperation === "bulk-rotation" ? "−" : "+"}
+                </Typography>
+              }
+            >
+              <Typography variant="subtitle2">2. Bulk Authority Rotation Wizard</Typography>
+            </AccordionSummary>
+            <AccordionDetails sx={{ pt: 0.5 }}>
+              <Card variant="outlined" sx={{ borderRadius: 1.5 }}>
+                <CardContent sx={{ p: 1.2 }}>
+                  <Stack spacing={1}>
                 <Typography variant="subtitle2">Bulk Authority Rotation Wizard</Typography>
                 <Typography variant="caption" color="text.secondary">
                   Rotate mint/freeze/metadata update authorities to a new authority in batches.
@@ -2368,13 +2537,39 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
                 >
                   Rotate Authorities
                 </Button>
-              </Stack>
-            </CardContent>
-          </Card>
+                  </Stack>
+                </CardContent>
+              </Card>
+            </AccordionDetails>
+          </Accordion>
 
-          <Card variant="outlined" sx={{ borderRadius: 1.5 }}>
-            <CardContent sx={{ p: 1.2 }}>
-              <Stack spacing={1}>
+          <Accordion
+            expanded={expandedOperation === "upload-metadata"}
+            onChange={(_event, isExpanded) => {
+              setExpandedOperation(isExpanded ? "upload-metadata" : false);
+            }}
+            disableGutters
+            sx={{
+              bgcolor: "transparent",
+              border: "1px solid",
+              borderColor: "divider",
+              borderRadius: "8px !important",
+              order: 9
+            }}
+          >
+            <AccordionSummary
+              expandIcon={
+                <Typography color="text.secondary">
+                  {expandedOperation === "upload-metadata" ? "−" : "+"}
+                </Typography>
+              }
+            >
+              <Typography variant="subtitle2">9. Upload Token Metadata (Irys)</Typography>
+            </AccordionSummary>
+            <AccordionDetails sx={{ pt: 0.5 }}>
+              <Card variant="outlined" sx={{ borderRadius: 1.5 }}>
+                <CardContent sx={{ p: 1.2 }}>
+                  <Stack spacing={1}>
                 <Typography variant="subtitle2">Upload Token Metadata (Irys)</Typography>
                 <Typography variant="caption" color="text.secondary">
                   User-funded upload from connected wallet. Write metadata JSON with a template or upload a file.
@@ -2547,13 +2742,39 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
                     </Stack>
                   </AccordionDetails>
                 </Accordion>
-              </Stack>
-            </CardContent>
-          </Card>
+                  </Stack>
+                </CardContent>
+              </Card>
+            </AccordionDetails>
+          </Accordion>
 
-          <Card variant="outlined" sx={{ borderRadius: 1.5 }}>
-            <CardContent sx={{ p: 1.2 }}>
-              <Stack spacing={1}>
+          <Accordion
+            expanded={expandedOperation === "create-mint"}
+            onChange={(_event, isExpanded) => {
+              setExpandedOperation(isExpanded ? "create-mint" : false);
+            }}
+            disableGutters
+            sx={{
+              bgcolor: "transparent",
+              border: "1px solid",
+              borderColor: "divider",
+              borderRadius: "8px !important",
+              order: 6
+            }}
+          >
+            <AccordionSummary
+              expandIcon={
+                <Typography color="text.secondary">
+                  {expandedOperation === "create-mint" ? "−" : "+"}
+                </Typography>
+              }
+            >
+              <Typography variant="subtitle2">6. Create Mint</Typography>
+            </AccordionSummary>
+            <AccordionDetails sx={{ pt: 0.5 }}>
+              <Card variant="outlined" sx={{ borderRadius: 1.5 }}>
+                <CardContent sx={{ p: 1.2 }}>
+                  <Stack spacing={1}>
                 <Typography variant="subtitle2">Create Mint</Typography>
                 <Stack direction={{ xs: "column", md: "row" }} spacing={1}>
                   <TextField
@@ -2646,13 +2867,121 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
                     Last created mint: {createdMint}
                   </Typography>
                 ) : null}
-              </Stack>
-            </CardContent>
-          </Card>
+                  </Stack>
+                </CardContent>
+              </Card>
+            </AccordionDetails>
+          </Accordion>
 
-          <Card variant="outlined" sx={{ borderRadius: 1.5 }}>
-            <CardContent sx={{ p: 1.2 }}>
-              <Stack spacing={1}>
+          <Accordion
+            expanded={expandedOperation === "close-mint"}
+            onChange={(_event, isExpanded) => {
+              setExpandedOperation(isExpanded ? "close-mint" : false);
+            }}
+            disableGutters
+            sx={{
+              bgcolor: "transparent",
+              border: "1px solid",
+              borderColor: "divider",
+              borderRadius: "8px !important",
+              order: 3
+            }}
+          >
+            <AccordionSummary
+              expandIcon={
+                <Typography color="text.secondary">
+                  {expandedOperation === "close-mint" ? "−" : "+"}
+                </Typography>
+              }
+            >
+              <Typography variant="subtitle2">3. Close Mint Account (Token-2022)</Typography>
+            </AccordionSummary>
+            <AccordionDetails sx={{ pt: 0.5 }}>
+              <Card variant="outlined" sx={{ borderRadius: 1.5 }}>
+                <CardContent sx={{ p: 1.2 }}>
+                  <Stack spacing={1}>
+                <Typography variant="subtitle2">Close Mint Account (Token-2022)</Typography>
+                <Alert severity="warning">
+                  Closing a mint is irreversible. Confirm mint address and destination before
+                  submitting.
+                </Alert>
+                <Typography variant="caption" color="text.secondary">
+                  Requirements: Token-2022 mint, mint close authority extension is set, your
+                  connected wallet is the close authority, and total supply is 0.
+                </Typography>
+                <TextField
+                  size="small"
+                  label="Mint Address"
+                  value={closeMintAddress}
+                  onChange={(event) => {
+                    setCloseMintAddress(event.target.value);
+                  }}
+                  placeholder="Token-2022 mint address"
+                />
+                <TextField
+                  size="small"
+                  label="Rent Destination (optional)"
+                  value={closeMintDestination}
+                  onChange={(event) => {
+                    setCloseMintDestination(event.target.value);
+                  }}
+                  placeholder={publicKey?.toBase58() || ""}
+                  helperText="Defaults to connected wallet."
+                />
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={closeMintAcknowledged}
+                      onChange={(event) => {
+                        setCloseMintAcknowledged(event.target.checked);
+                      }}
+                    />
+                  }
+                  label="I understand this permanently closes the mint account."
+                />
+                <Button
+                  variant="contained"
+                  color="warning"
+                  onClick={() => {
+                    void closeMintAccount();
+                  }}
+                  disabled={!connected || isSubmitting || !closeMintAcknowledged}
+                >
+                  Close Mint Account
+                </Button>
+                  </Stack>
+                </CardContent>
+              </Card>
+            </AccordionDetails>
+          </Accordion>
+
+          <Accordion
+            expanded={expandedOperation === "mint-tokens"}
+            onChange={(_event, isExpanded) => {
+              setExpandedOperation(isExpanded ? "mint-tokens" : false);
+            }}
+            disableGutters
+            sx={{
+              bgcolor: "transparent",
+              border: "1px solid",
+              borderColor: "divider",
+              borderRadius: "8px !important",
+              order: 7
+            }}
+          >
+            <AccordionSummary
+              expandIcon={
+                <Typography color="text.secondary">
+                  {expandedOperation === "mint-tokens" ? "−" : "+"}
+                </Typography>
+              }
+            >
+              <Typography variant="subtitle2">7. Mint Tokens</Typography>
+            </AccordionSummary>
+            <AccordionDetails sx={{ pt: 0.5 }}>
+              <Card variant="outlined" sx={{ borderRadius: 1.5 }}>
+                <CardContent sx={{ p: 1.2 }}>
+                  <Stack spacing={1}>
                 <Typography variant="subtitle2">Mint Tokens</Typography>
                 <TextField
                   size="small"
@@ -2688,13 +3017,39 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
                 >
                   Mint
                 </Button>
-              </Stack>
-            </CardContent>
-          </Card>
+                  </Stack>
+                </CardContent>
+              </Card>
+            </AccordionDetails>
+          </Accordion>
 
-          <Card variant="outlined" sx={{ borderRadius: 1.5 }}>
-            <CardContent sx={{ p: 1.2 }}>
-              <Stack spacing={1}>
+          <Accordion
+            expanded={expandedOperation === "mint-distribute"}
+            onChange={(_event, isExpanded) => {
+              setExpandedOperation(isExpanded ? "mint-distribute" : false);
+            }}
+            disableGutters
+            sx={{
+              bgcolor: "transparent",
+              border: "1px solid",
+              borderColor: "divider",
+              borderRadius: "8px !important",
+              order: 8
+            }}
+          >
+            <AccordionSummary
+              expandIcon={
+                <Typography color="text.secondary">
+                  {expandedOperation === "mint-distribute" ? "−" : "+"}
+                </Typography>
+              }
+            >
+              <Typography variant="subtitle2">8. Mint + Distribute (Batch)</Typography>
+            </AccordionSummary>
+            <AccordionDetails sx={{ pt: 0.5 }}>
+              <Card variant="outlined" sx={{ borderRadius: 1.5 }}>
+                <CardContent sx={{ p: 1.2 }}>
+                  <Stack spacing={1}>
                 <Typography variant="subtitle2">Mint + Distribute (Batch)</Typography>
                 <Typography variant="caption" color="text.secondary">
                   One recipient per line: wallet,amount
@@ -2728,13 +3083,43 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
                 >
                   Mint + Distribute
                 </Button>
-              </Stack>
-            </CardContent>
-          </Card>
+                  </Stack>
+                </CardContent>
+              </Card>
+            </AccordionDetails>
+          </Accordion>
 
-          <Card variant="outlined" sx={{ borderRadius: 1.5 }}>
-            <CardContent sx={{ p: 1.2 }}>
-              <Stack spacing={1}>
+          <Accordion
+            expanded={expandedOperation === "update-mint-freeze-authority"}
+            onChange={(_event, isExpanded) => {
+              setExpandedOperation(
+                isExpanded ? "update-mint-freeze-authority" : false
+              );
+            }}
+            disableGutters
+            sx={{
+              bgcolor: "transparent",
+              border: "1px solid",
+              borderColor: "divider",
+              borderRadius: "8px !important",
+              order: 4
+            }}
+          >
+            <AccordionSummary
+              expandIcon={
+                <Typography color="text.secondary">
+                  {expandedOperation === "update-mint-freeze-authority"
+                    ? "−"
+                    : "+"}
+                </Typography>
+              }
+            >
+              <Typography variant="subtitle2">4. Update Mint/Freeze Authority</Typography>
+            </AccordionSummary>
+            <AccordionDetails sx={{ pt: 0.5 }}>
+              <Card variant="outlined" sx={{ borderRadius: 1.5 }}>
+                <CardContent sx={{ p: 1.2 }}>
+                  <Stack spacing={1}>
                 <Typography variant="subtitle2">Update Mint/Freeze Authority</Typography>
                 <TextField
                   size="small"
@@ -2773,13 +3158,39 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
                 >
                   Update Authority
                 </Button>
-              </Stack>
-            </CardContent>
-          </Card>
+                  </Stack>
+                </CardContent>
+              </Card>
+            </AccordionDetails>
+          </Accordion>
 
-          <Card variant="outlined" sx={{ borderRadius: 1.5 }}>
-            <CardContent sx={{ p: 1.2 }}>
-              <Stack spacing={1}>
+          <Accordion
+            expanded={expandedOperation === "create-metadata"}
+            onChange={(_event, isExpanded) => {
+              setExpandedOperation(isExpanded ? "create-metadata" : false);
+            }}
+            disableGutters
+            sx={{
+              bgcolor: "transparent",
+              border: "1px solid",
+              borderColor: "divider",
+              borderRadius: "8px !important",
+              order: 10
+            }}
+          >
+            <AccordionSummary
+              expandIcon={
+                <Typography color="text.secondary">
+                  {expandedOperation === "create-metadata" ? "−" : "+"}
+                </Typography>
+              }
+            >
+              <Typography variant="subtitle2">10. Create Metadata Account (Metaplex)</Typography>
+            </AccordionSummary>
+            <AccordionDetails sx={{ pt: 0.5 }}>
+              <Card variant="outlined" sx={{ borderRadius: 1.5 }}>
+                <CardContent sx={{ p: 1.2 }}>
+                  <Stack spacing={1}>
                 <Typography variant="subtitle2">Create Metadata Account (Metaplex)</Typography>
                 <Typography variant="caption" color="text.secondary">
                   Creates a metadata PDA for a mint if it does not already exist.
@@ -2855,13 +3266,43 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
                 >
                   Create Metadata
                 </Button>
-              </Stack>
-            </CardContent>
-          </Card>
+                  </Stack>
+                </CardContent>
+              </Card>
+            </AccordionDetails>
+          </Accordion>
 
-          <Card variant="outlined" sx={{ borderRadius: 1.5 }}>
-            <CardContent sx={{ p: 1.2 }}>
-              <Stack spacing={1}>
+          <Accordion
+            expanded={expandedOperation === "update-metadata-authority"}
+            onChange={(_event, isExpanded) => {
+              setExpandedOperation(
+                isExpanded ? "update-metadata-authority" : false
+              );
+            }}
+            disableGutters
+            sx={{
+              bgcolor: "transparent",
+              border: "1px solid",
+              borderColor: "divider",
+              borderRadius: "8px !important",
+              order: 11
+            }}
+          >
+            <AccordionSummary
+              expandIcon={
+                <Typography color="text.secondary">
+                  {expandedOperation === "update-metadata-authority"
+                    ? "−"
+                    : "+"}
+                </Typography>
+              }
+            >
+              <Typography variant="subtitle2">11. Update Metadata Authority</Typography>
+            </AccordionSummary>
+            <AccordionDetails sx={{ pt: 0.5 }}>
+              <Card variant="outlined" sx={{ borderRadius: 1.5 }}>
+                <CardContent sx={{ p: 1.2 }}>
+                  <Stack spacing={1}>
                 <Typography variant="subtitle2">Update Metadata Authority</Typography>
                 <TextField
                   size="small"
@@ -2888,13 +3329,39 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
                 >
                   Update Metadata Authority
                 </Button>
-              </Stack>
-            </CardContent>
-          </Card>
+                  </Stack>
+                </CardContent>
+              </Card>
+            </AccordionDetails>
+          </Accordion>
 
-          <Card variant="outlined" sx={{ borderRadius: 1.5 }}>
-            <CardContent sx={{ p: 1.2 }}>
-              <Stack spacing={1}>
+          <Accordion
+            expanded={expandedOperation === "update-metadata-uri"}
+            onChange={(_event, isExpanded) => {
+              setExpandedOperation(isExpanded ? "update-metadata-uri" : false);
+            }}
+            disableGutters
+            sx={{
+              bgcolor: "transparent",
+              border: "1px solid",
+              borderColor: "divider",
+              borderRadius: "8px !important",
+              order: 12
+            }}
+          >
+            <AccordionSummary
+              expandIcon={
+                <Typography color="text.secondary">
+                  {expandedOperation === "update-metadata-uri" ? "−" : "+"}
+                </Typography>
+              }
+            >
+              <Typography variant="subtitle2">12. Update Metadata URI Only</Typography>
+            </AccordionSummary>
+            <AccordionDetails sx={{ pt: 0.5 }}>
+              <Card variant="outlined" sx={{ borderRadius: 1.5 }}>
+                <CardContent sx={{ p: 1.2 }}>
+                  <Stack spacing={1}>
                 <Typography variant="subtitle2">Update Metadata URI Only</Typography>
                 <Typography variant="caption" color="text.secondary">
                   Preserves existing metadata fields and replaces only the URI.
@@ -2924,9 +3391,11 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
                 >
                   Update URI
                 </Button>
-              </Stack>
-            </CardContent>
-          </Card>
+                  </Stack>
+                </CardContent>
+              </Card>
+            </AccordionDetails>
+          </Accordion>
         </Stack>
       </CardContent>
     </Card>

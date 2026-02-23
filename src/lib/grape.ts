@@ -8,10 +8,13 @@ export type GrapeProduct = {
   name: string;
   description: string;
   programId?: string;
-  href: string;
-  ctaLabel: string;
+  href?: string;
+  ctaLabel?: string;
   sdkHref?: string;
   requestBotFromDao?: boolean;
+  isAuxiliary?: boolean;
+  addressPending?: boolean;
+  logoGrayscale?: boolean;
   logo: StaticImageData;
 };
 
@@ -56,6 +59,27 @@ export const grapeProducts: GrapeProduct[] = [
     href: "https://github.com/Grape-Labs/grape-governance-directory",
     ctaLabel: "View GSPL Repo",
     logo: governanceAvatar
+  },
+  {
+    name: "Grape Distributor",
+    description:
+      "Auxiliary helper primitive for trustless Merkle claims and vault-based SPL token distribution.",
+    programId: "GCLMhBGsDMHbxYyayzZyDY85cF89XNGgEhss4GXd9cHk",
+    href: "https://explorer.solana.com/address/GCLMhBGsDMHbxYyayzZyDY85cF89XNGgEhss4GXd9cHk?cluster=mainnet",
+    ctaLabel: "View Program",
+    isAuxiliary: true,
+    logoGrayscale: true,
+    logo: grapeAvatar
+  },
+  {
+    name: "Grape Bundler",
+    description:
+      "Auxiliary helper primitive for bundled token sends to reduce transaction overhead.",
+    ctaLabel: "Address Pending",
+    isAuxiliary: true,
+    addressPending: true,
+    logoGrayscale: true,
+    logo: grapeAvatar
   },
   {
     name: "Governance UI",

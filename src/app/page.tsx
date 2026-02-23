@@ -203,7 +203,7 @@ export default function Home() {
                   </Button>
                 </Stack>
                 <Stack direction={{ xs: "column", md: "row" }} spacing={1}>
-                  <Chip label="Programs: 4" variant="outlined" color="secondary" />
+                  <Chip label="Programs: 6" variant="outlined" color="secondary" />
                   <Chip label="Governance UI" variant="outlined" color="secondary" />
                 </Stack>
               </Stack>
@@ -311,12 +311,17 @@ export default function Home() {
                 <CardContent sx={{ p: 2.5 }}>
                   <Stack spacing={1.4}>
                     <Stack direction="row" justifyContent="space-between" alignItems="center">
-                      <Chip
-                        size="small"
-                        variant="outlined"
-                        label={`0${index + 1}`}
-                        sx={{ fontFamily: "var(--font-mono), monospace" }}
-                      />
+                      <Stack direction="row" spacing={0.8} alignItems="center">
+                        <Chip
+                          size="small"
+                          variant="outlined"
+                          label={`0${index + 1}`}
+                          sx={{ fontFamily: "var(--font-mono), monospace" }}
+                        />
+                        {product.isAuxiliary ? (
+                          <Chip size="small" variant="outlined" color="default" label="Auxiliary" />
+                        ) : null}
+                      </Stack>
                     </Stack>
                     <Stack direction="row" spacing={1.2} alignItems="center">
                       <Avatar
@@ -335,7 +340,12 @@ export default function Home() {
                           alt={`${product.name} logo`}
                           width={44}
                           height={44}
-                          style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                          style={{
+                            width: "100%",
+                            height: "100%",
+                            objectFit: "cover",
+                            filter: product.logoGrayscale ? "grayscale(1)" : "none"
+                          }}
                         />
                       </Avatar>
                       <Typography variant="h3" sx={{ fontSize: "1.3rem" }}>
@@ -343,16 +353,36 @@ export default function Home() {
                       </Typography>
                     </Stack>
                     <Typography color="text.secondary">{product.description}</Typography>
-                    <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                      <Button
-                        variant="contained"
-                        color="primary"
-                        href={product.href}
-                        target="_blank"
-                        rel="noreferrer"
+                    {product.programId ? (
+                      <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        sx={{ wordBreak: "break-all", fontFamily: "var(--font-mono), monospace" }}
                       >
-                        {product.ctaLabel}
-                      </Button>
+                        Program: {product.programId}
+                      </Typography>
+                    ) : null}
+                    {product.addressPending ? (
+                      <Typography variant="caption" color="text.secondary">
+                        Program address pending.
+                      </Typography>
+                    ) : null}
+                    <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                      {product.href && product.ctaLabel ? (
+                        <Button
+                          variant={product.isAuxiliary ? "outlined" : "contained"}
+                          color={product.isAuxiliary ? "secondary" : "primary"}
+                          href={product.href}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          {product.ctaLabel}
+                        </Button>
+                      ) : product.addressPending ? (
+                        <Button variant="outlined" color="inherit" disabled>
+                          Address Pending
+                        </Button>
+                      ) : null}
                       {product.sdkHref ? (
                         <Button
                           variant="outlined"
