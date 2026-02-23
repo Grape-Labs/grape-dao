@@ -39,6 +39,7 @@ type ClaimCandidate = {
   distributor: PublicKey;
   realm?: PublicKey;
   governanceProgramId?: PublicKey;
+  governanceProgramVersion?: number;
   index: bigint;
   amount: bigint;
   proof: Uint8Array[];
@@ -90,6 +91,22 @@ function parseOptionalPublicKey(value: unknown, label: string) {
   return new PublicKey(value);
 }
 
+function parseOptionalProgramVersion(value: unknown, label: string) {
+  if (value === undefined || value === null || value === "") {
+    return undefined;
+  }
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string"
+        ? Number(value)
+        : Number.NaN;
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(`${label} must be a positive integer.`);
+  }
+  return parsed;
+}
+
 function formatTokenAmount(rawAmount: bigint, decimals: number) {
   if (decimals <= 0) {
     return rawAmount.toString();
@@ -101,6 +118,34 @@ function formatTokenAmount(rawAmount: bigint, decimals: number) {
     .padStart(decimals, "0")
     .replace(/0+$/, "");
   return fraction ? `${whole.toString()}.${fraction}` : whole.toString();
+}
+
+function extractErrorLogs(unknownError: unknown): string[] {
+  if (!unknownError || typeof unknownError !== "object") {
+    return [];
+  }
+  const errorRecord = unknownError as Record<string, unknown>;
+  const candidates: unknown[] = [
+    errorRecord.logs,
+    errorRecord.transactionLogs,
+    (errorRecord.cause as Record<string, unknown> | undefined)?.logs,
+    (errorRecord.simulationResponse as Record<string, unknown> | undefined)?.logs
+  ];
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) {
+      return candidate.filter((line): line is string => typeof line === "string");
+    }
+  }
+  return [];
+}
+
+function formatErrorWithLogs(unknownError: unknown, fallback: string) {
+  const message = unknownError instanceof Error ? unknownError.message : fallback;
+  const logs = extractErrorLogs(unknownError);
+  if (logs.length === 0) {
+    return message;
+  }
+  return `${message}\nLogs:\n${logs.slice(-12).join("\n")}`;
 }
 
 type ClaimPayload = Record<string, unknown>;
@@ -137,6 +182,10 @@ function normalizeClaimCandidates(
         data.governanceProgram,
       `claims[${claimIndex}] governanceProgramId`
     );
+    const governanceProgramVersion = parseOptionalProgramVersion(
+      claim.governanceProgramVersion ?? data.governanceProgramVersion,
+      `claims[${claimIndex}] governanceProgramVersion`
+    );
     const root =
       typeof claim.root === "string" || typeof claim.merkleRoot === "string"
         ? parseHex32(String(claim.root ?? claim.merkleRoot), `claims[${claimIndex}] root`)
@@ -161,6 +210,7 @@ function normalizeClaimCandidates(
       distributor,
       realm,
       governanceProgramId,
+      governanceProgramVersion,
       index,
       amount,
       proof,
@@ -188,6 +238,10 @@ function normalizeClaimCandidates(
         data.governanceProgramId ??
         data.governanceProgram,
       `campaigns[${campaignIndex}] governanceProgramId`
+    );
+    const campaignGovernanceProgramVersion = parseOptionalProgramVersion(
+      campaign.governanceProgramVersion ?? data.governanceProgramVersion,
+      `campaigns[${campaignIndex}] governanceProgramVersion`
     );
     const root =
       typeof campaign.root === "string" || typeof campaign.merkleRoot === "string"
@@ -217,6 +271,10 @@ function normalizeClaimCandidates(
           campaignGovernanceProgramId,
         `campaigns[${campaignIndex}].claims[${claimIndex}] governanceProgramId`
       );
+      const claimGovernanceProgramVersion = parseOptionalProgramVersion(
+        claim.governanceProgramVersion ?? campaignGovernanceProgramVersion,
+        `campaigns[${campaignIndex}].claims[${claimIndex}] governanceProgramVersion`
+      );
       const proof = parseProof(
         claim.proof,
         `campaigns[${campaignIndex}].claims[${claimIndex}]`
@@ -241,6 +299,7 @@ function normalizeClaimCandidates(
         distributor,
         realm: claimRealm,
         governanceProgramId: claimGovernanceProgramId,
+        governanceProgramVersion: claimGovernanceProgramVersion,
         index,
         amount,
         proof,
@@ -437,7 +496,14 @@ export function ClaimConsole() {
             distributor: entry.distributor,
             realm: entry.realm,
             governanceProgramId:
-              entry.governanceProgramId ?? DEFAULT_SPL_GOVERNANCE_PROGRAM_ID
+              entry.governanceProgramId ?? DEFAULT_SPL_GOVERNANCE_PROGRAM_ID,
+            governanceProgramVersion:
+              entry.governanceProgramVersion ??
+              ((entry.governanceProgramId ?? DEFAULT_SPL_GOVERNANCE_PROGRAM_ID).equals(
+                DEFAULT_SPL_GOVERNANCE_PROGRAM_ID
+              )
+                ? 3
+                : undefined)
           });
         instructions = governanceBuild.instructions;
       } else {
@@ -452,10 +518,25 @@ export function ClaimConsole() {
         });
         instructions = claimBuild.instructions;
       }
-      const signature = await sendTransaction(
-        new Transaction().add(...instructions),
-        connection
+      const transaction = new Transaction().add(...instructions);
+      transaction.feePayer = publicKey;
+      transaction.recentBlockhash = (
+        await connection.getLatestBlockhash("processed")
+      ).blockhash;
+      const simulation = await connection.simulateTransaction(
+        transaction,
+        undefined,
+        true
       );
+      if (simulation.value.err) {
+        const simError = new Error(
+          `Simulation failed: ${JSON.stringify(simulation.value.err)}`
+        );
+        (simError as Error & { logs?: string[] }).logs = simulation.value.logs ?? [];
+        throw simError;
+      }
+
+      const signature = await sendTransaction(transaction, connection);
       await connection.confirmTransaction(signature, "confirmed");
 
       setStatus({
@@ -469,10 +550,7 @@ export function ClaimConsole() {
     } catch (unknownError) {
       setStatus({
         severity: "error",
-        message:
-          unknownError instanceof Error
-            ? unknownError.message
-            : "Failed to claim."
+        message: formatErrorWithLogs(unknownError, "Failed to claim.")
       });
     } finally {
       setIsClaimingId(null);
@@ -527,6 +605,7 @@ export function ClaimConsole() {
           {status ? (
             <Alert
               severity={status.severity}
+              sx={{ whiteSpace: "pre-wrap" }}
               action={
                 status.signature ? (
                   <Button
