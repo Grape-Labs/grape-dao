@@ -69,6 +69,7 @@ export const grapeProducts: GrapeProduct[] = [
     ctaLabel: "View Program",
     isAuxiliary: true,
     logoGrayscale: true,
+    sdkHref: "https://www.npmjs.com/package/grape-distributor-sdk",
     logo: grapeAvatar
   },
   {
