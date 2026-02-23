@@ -17,6 +17,7 @@ import {
   createInitializeMint2Instruction,
   createMintToInstruction,
   createSetAuthorityInstruction,
+  createTransferInstruction,
   getAssociatedTokenAddressSync,
   getMint,
   getMintCloseAuthority,
@@ -605,6 +606,7 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
   const [distributorIssueMint, setDistributorIssueMint] = useState("");
   const [distributorIssueVault, setDistributorIssueVault] = useState("");
   const [distributorIssueMerkleRoot, setDistributorIssueMerkleRoot] = useState("");
+  const [distributorIssueFundAmount, setDistributorIssueFundAmount] = useState("");
   const [distributorIssueStartAt, setDistributorIssueStartAt] = useState(() =>
     toDateTimeLocalInput(Math.floor(Date.now() / 1000))
   );
@@ -616,6 +618,7 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
   const [distributorSetRootValue, setDistributorSetRootValue] = useState("");
   const [distributorClaimMint, setDistributorClaimMint] = useState("");
   const [distributorClaimVault, setDistributorClaimVault] = useState("");
+  const [distributorClaimDistributor, setDistributorClaimDistributor] = useState("");
   const [distributorClaimIndex, setDistributorClaimIndex] = useState("0");
   const [distributorClaimAmount, setDistributorClaimAmount] = useState("");
   const [distributorClaimProof, setDistributorClaimProof] = useState("");
@@ -1868,6 +1871,7 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
       setDistributorSetRootDistributor(distributor.toBase58());
       setDistributorClaimMint((current) => current || mint.toBase58());
       setDistributorClaimVault((current) => current || vaultAta.toBase58());
+      setDistributorClaimDistributor((current) => current || distributor.toBase58());
       setStatus({
         severity: "info",
         message: "Distributor, vault authority, and vault ATA derived."
@@ -1914,6 +1918,7 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
       setDistributorSetRootDistributor(distributor.toBase58());
       setDistributorClaimMint(mint.toBase58());
       setDistributorClaimVault(vaultAta.toBase58());
+      setDistributorClaimDistributor(distributor.toBase58());
       setDistributorWizardDistributorPda(distributor.toBase58());
       setDistributorWizardVaultAuthorityPda(vaultAuthority.toBase58());
       setDistributorWizardVaultAta(vaultAta.toBase58());
@@ -2076,6 +2081,7 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
       setDistributorSetRootDistributor(distributor.toBase58());
       setDistributorClaimMint((current) => current || mint.toBase58());
       setDistributorClaimVault((current) => current || vault.toBase58());
+      setDistributorClaimDistributor((current) => current || distributor.toBase58());
       setStatus({
         severity: "success",
         message:
@@ -2090,6 +2096,102 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
           unknownError instanceof Error
             ? unknownError.message
             : "Failed to initialize distributor."
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const fundDistributorVault = async () => {
+    if (!publicKey) {
+      setStatus({ severity: "error", message: "Connect your wallet first." });
+      return;
+    }
+
+    setIsSubmitting(true);
+    setStatus(null);
+    try {
+      const mint = new PublicKey(distributorIssueMint.trim());
+      const vault = new PublicKey(distributorIssueVault.trim());
+      const amountInput = distributorIssueFundAmount.trim();
+      if (!amountInput) {
+        throw new Error("Funding amount is required.");
+      }
+
+      const mintState = await getMint(connection, mint, "confirmed", TOKEN_PROGRAM_ID);
+      const amountBaseUnits = parseAmountToBaseUnits(amountInput, mintState.decimals);
+      if (amountBaseUnits <= 0n) {
+        throw new Error("Funding amount must be greater than zero.");
+      }
+
+      const [distributor] = distributorClient.findDistributorPda(mint);
+      const [vaultAuthority] = distributorClient.findVaultAuthorityPda(distributor);
+      const expectedVault = getAssociatedTokenAddressSync(
+        mint,
+        vaultAuthority,
+        true,
+        TOKEN_PROGRAM_ID,
+        ASSOCIATED_TOKEN_PROGRAM_ID
+      );
+      if (!vault.equals(expectedVault)) {
+        throw new Error(
+          `Vault token account does not match derived vault ATA for this distributor. Expected ${expectedVault.toBase58()}.`
+        );
+      }
+
+      const sourceAta = getAssociatedTokenAddressSync(
+        mint,
+        publicKey,
+        false,
+        TOKEN_PROGRAM_ID,
+        ASSOCIATED_TOKEN_PROGRAM_ID
+      );
+      const sourceAtaInfo = await connection.getAccountInfo(sourceAta, "confirmed");
+      if (!sourceAtaInfo) {
+        throw new Error(
+          `Connected wallet has no token account for this mint. Expected ATA ${sourceAta.toBase58()}.`
+        );
+      }
+      const sourceBalance = await connection.getTokenAccountBalance(sourceAta, "confirmed");
+      const sourceAmount = BigInt(sourceBalance.value.amount);
+      if (sourceAmount < amountBaseUnits) {
+        throw new Error(
+          `Insufficient wallet token balance. Available: ${sourceBalance.value.uiAmountString ?? sourceBalance.value.amount}, requested: ${amountInput}.`
+        );
+      }
+
+      const transaction = new Transaction().add(
+        createAssociatedTokenAccountIdempotentInstruction(
+          publicKey,
+          vault,
+          vaultAuthority,
+          mint,
+          TOKEN_PROGRAM_ID,
+          ASSOCIATED_TOKEN_PROGRAM_ID
+        ),
+        createTransferInstruction(
+          sourceAta,
+          vault,
+          publicKey,
+          amountBaseUnits,
+          [],
+          TOKEN_PROGRAM_ID
+        )
+      );
+
+      const signature = await runWalletTransaction(transaction);
+      setStatus({
+        severity: "success",
+        message: `Funded distributor vault with ${amountInput} token(s).`,
+        signature
+      });
+    } catch (unknownError) {
+      setStatus({
+        severity: "error",
+        message:
+          unknownError instanceof Error
+            ? unknownError.message
+            : "Failed to fund distributor vault."
       });
     } finally {
       setIsSubmitting(false);
@@ -2144,12 +2246,16 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
     const amount = payload.amount;
     const root = payload.root ?? payload.merkleRoot;
     const proof = payload.proof;
+    const distributor = payload.distributor;
 
     if (typeof mint !== "string") {
       throw new Error("Claim package requires `mint`.");
     }
     if (typeof vault !== "string") {
       throw new Error("Claim package requires `vault`.");
+    }
+    if (distributor !== undefined && typeof distributor !== "string") {
+      throw new Error("Claim package `distributor` must be a base58 address.");
     }
     if (root !== undefined && typeof root !== "string") {
       throw new Error("Claim package `root` must be a hex string.");
@@ -2179,6 +2285,9 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
 
     setDistributorClaimMint(mint);
     setDistributorClaimVault(vault);
+    if (typeof distributor === "string") {
+      setDistributorClaimDistributor(distributor);
+    }
     setDistributorClaimIndex(parsedIndex.toString());
     setDistributorClaimAmount(parsedAmount.toString());
     setDistributorClaimProof(normalizedProofLines.join("\n"));
@@ -2306,6 +2415,10 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
     try {
       const mint = new PublicKey(distributorClaimMint.trim());
       const vault = new PublicKey(distributorClaimVault.trim());
+      const distributorOverrideInput = distributorClaimDistributor.trim();
+      const distributorOverride = distributorOverrideInput
+        ? new PublicKey(distributorOverrideInput)
+        : undefined;
       const index = BigInt(distributorClaimIndex.trim());
       const amount = BigInt(distributorClaimAmount.trim());
       if (amount <= 0n) {
@@ -2318,7 +2431,8 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
         vault,
         index,
         amount,
-        proof
+        proof,
+        distributor: distributorOverride
       });
 
       if (distributorClaimVerifyLocal) {
@@ -2346,6 +2460,59 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
           unknownError instanceof Error
             ? unknownError.message
             : "Failed to claim distributor tokens."
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const closeDistributorClaimStatus = async () => {
+    if (!publicKey) {
+      setStatus({ severity: "error", message: "Connect your wallet first." });
+      return;
+    }
+
+    setIsSubmitting(true);
+    setStatus(null);
+    try {
+      const distributorInput = distributorClaimDistributor.trim();
+      const distributor = distributorInput
+        ? new PublicKey(distributorInput)
+        : distributorClaimMint.trim()
+          ? distributorClient.findDistributorPda(
+              new PublicKey(distributorClaimMint.trim())
+            )[0]
+          : null;
+      if (!distributor) {
+        throw new Error("Set distributor PDA or mint address first.");
+      }
+
+      const { instruction, claimStatus } =
+        distributorClient.buildCloseClaimStatusInstruction({
+          claimant: publicKey,
+          distributor
+        });
+      const signature = await runWalletTransaction(new Transaction().add(instruction));
+      setStatus({
+        severity: "success",
+        message:
+          `Claim status closed: ${claimStatus.toBase58()}. ` +
+          "Claim status rent has been returned to the claimant wallet.",
+        signature
+      });
+    } catch (unknownError) {
+      const fallbackMessage =
+        unknownError instanceof Error ? unknownError.message : "Failed to close claim status.";
+      const lower = fallbackMessage.toLowerCase();
+      const withHint =
+        lower.includes("instruction fallback not found") ||
+        lower.includes("unknown instruction") ||
+        lower.includes("invalid instruction data")
+          ? `${fallbackMessage} Program likely does not include close_claim_status yet.`
+          : fallbackMessage;
+      setStatus({
+        severity: "error",
+        message: withHint
       });
     } finally {
       setIsSubmitting(false);
@@ -4428,6 +4595,27 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
                     >
                       Initialize Distributor
                     </Button>
+                    <Typography variant="caption" color="text.secondary">
+                      Funding helper: transfer tokens from your connected wallet ATA into the distributor vault.
+                    </Typography>
+                    <TextField
+                      size="small"
+                      label="Vault Funding Amount (tokens)"
+                      value={distributorIssueFundAmount}
+                      onChange={(event) => {
+                        setDistributorIssueFundAmount(event.target.value);
+                      }}
+                      placeholder="100"
+                    />
+                    <Button
+                      variant="outlined"
+                      onClick={() => {
+                        void fundDistributorVault();
+                      }}
+                      disabled={!connected || isSubmitting}
+                    >
+                      Fund Vault
+                    </Button>
                     <TextField
                       size="small"
                       label="Distributor PDA (for Set Root)"
@@ -4576,6 +4764,14 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
                         setDistributorClaimVault(event.target.value);
                       }}
                     />
+                    <TextField
+                      size="small"
+                      label="Distributor PDA (optional, derived from mint if empty)"
+                      value={distributorClaimDistributor}
+                      onChange={(event) => {
+                        setDistributorClaimDistributor(event.target.value);
+                      }}
+                    />
                     <Stack direction={{ xs: "column", md: "row" }} spacing={1}>
                       <TextField
                         size="small"
@@ -4633,6 +4829,19 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
                       disabled={!connected || isSubmitting}
                     >
                       Claim Tokens
+                    </Button>
+                    <Typography variant="caption" color="text.secondary">
+                      Optional rent reclaim helper. Works only if on-chain program supports
+                      `close_claim_status` (typically after claim window end).
+                    </Typography>
+                    <Button
+                      variant="outlined"
+                      onClick={() => {
+                        void closeDistributorClaimStatus();
+                      }}
+                      disabled={!connected || isSubmitting}
+                    >
+                      Close Claim Status (Reclaim Rent)
                     </Button>
                   </Stack>
                 </CardContent>

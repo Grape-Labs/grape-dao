@@ -76,7 +76,8 @@ export const grapeProducts: GrapeProduct[] = [
     name: "Grape Bundler",
     description:
       "Auxiliary helper primitive for bundled token sends to reduce transaction overhead.",
-    ctaLabel: "Address Pending",
+    ctaLabel: "View Program",
+    programId: "TbpjRtCg2Z2n2Xx7pFm5HVwsjx9GPJ5MsrfBvCoQRNL",
     isAuxiliary: true,
     addressPending: true,
     logoGrayscale: true,
