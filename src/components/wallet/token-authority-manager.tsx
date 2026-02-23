@@ -709,6 +709,21 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
     () => new GrapeDistributorClient(connection),
     [connection]
   );
+  const distributorClaimManifestUrl = useMemo(() => {
+    const uploaded = uploadedDistributorClaimPackageUrl.trim();
+    if (uploaded) {
+      return uploaded;
+    }
+    return distributorClaimPackageUrl.trim();
+  }, [distributorClaimPackageUrl, uploadedDistributorClaimPackageUrl]);
+  const distributorClaimShareUrl = useMemo(() => {
+    if (!distributorClaimManifestUrl) {
+      return "";
+    }
+    const origin =
+      typeof window !== "undefined" ? window.location.origin : "https://grape.art";
+    return `${origin}/claims?manifest=${encodeURIComponent(distributorClaimManifestUrl)}`;
+  }, [distributorClaimManifestUrl]);
 
   useEffect(() => {
     if (!isToken2022Program && mintCloseAuthorityMode !== "disabled") {
@@ -2470,6 +2485,28 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
       });
     } finally {
       setIsDistributorClaimPackageLoading(false);
+    }
+  };
+
+  const copyDistributorClaimShareUrl = async () => {
+    if (!distributorClaimShareUrl) {
+      setStatus({
+        severity: "error",
+        message: "Set or upload a claim package URL first."
+      });
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(distributorClaimShareUrl);
+      setStatus({
+        severity: "info",
+        message: "End-user claim link copied."
+      });
+    } catch {
+      setStatus({
+        severity: "error",
+        message: "Failed to copy end-user claim link."
+      });
     }
   };
 
@@ -4874,6 +4911,40 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
                       >
                         Uploaded Claim JSON URL: {uploadedDistributorClaimPackageUrl}
                       </Typography>
+                    ) : null}
+                    {distributorClaimShareUrl ? (
+                      <>
+                        <TextField
+                          size="small"
+                          label="End-User Claim Link"
+                          value={distributorClaimShareUrl}
+                          InputProps={{ readOnly: true }}
+                        />
+                        <Stack direction={{ xs: "column", md: "row" }} spacing={1}>
+                          <Button
+                            variant="outlined"
+                            onClick={() => {
+                              void copyDistributorClaimShareUrl();
+                            }}
+                            disabled={
+                              isSubmitting || isDistributorClaimPackageLoading
+                            }
+                          >
+                            Copy Claim Link
+                          </Button>
+                          <Button
+                            variant="outlined"
+                            href={distributorClaimShareUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            disabled={
+                              isSubmitting || isDistributorClaimPackageLoading
+                            }
+                          >
+                            Open Claim Link
+                          </Button>
+                        </Stack>
+                      </>
                     ) : null}
                     <Typography variant="caption" color="text.secondary">
                       Governance realm/program are sourced from Quick Wizard or claim JSON.
