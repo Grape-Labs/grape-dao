@@ -304,7 +304,7 @@ function parseDistributionRecipients(
   return recipients;
 }
 
-function parseDistributorAllocationsInput(input: string) {
+function parseDistributorAllocationsInput(input: string, decimals: number) {
   const lines = input
     .split(/\r?\n/)
     .map((line) => line.trim())
@@ -320,12 +320,12 @@ function parseDistributorAllocationsInput(input: string) {
       : line.split(/\s+/).map((value) => value.trim());
     if (parts.length < 2 || !parts[0] || !parts[1]) {
       throw new Error(
-        `Invalid allocation format on line ${index + 1}. Use wallet,amountBaseUnits.`
+        `Invalid allocation format on line ${index + 1}. Use wallet,amount.`
       );
     }
 
     const wallet = new PublicKey(parts[0]);
-    const amount = BigInt(parts[1]);
+    const amount = parseAmountToBaseUnits(parts[1], decimals);
     if (amount <= 0n) {
       throw new Error(
         `Allocation amount must be greater than zero on line ${index + 1}.`
@@ -616,6 +616,11 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
   const [distributorWizardClaimant, setDistributorWizardClaimant] = useState("");
   const [distributorWizardAllocations, setDistributorWizardAllocations] =
     useState("");
+  const [distributorWizardRealm, setDistributorWizardRealm] = useState("");
+  const [
+    distributorWizardGovernanceProgramId,
+    setDistributorWizardGovernanceProgramId
+  ] = useState(DEFAULT_SPL_GOVERNANCE_PROGRAM_ID.toBase58());
   const [distributorWizardDistributorPda, setDistributorWizardDistributorPda] =
     useState("");
   const [distributorWizardVaultAuthorityPda, setDistributorWizardVaultAuthorityPda] =
@@ -1908,10 +1913,21 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
     }
   };
 
-  const generateDistributorWizardRootAndClaimPackage = () => {
+  const generateDistributorWizardRootAndClaimPackage = async () => {
     setStatus(null);
     try {
       const mint = new PublicKey(distributorWizardMint.trim());
+      const realmInput = distributorWizardRealm.trim();
+      const governanceProgramInput =
+        distributorWizardGovernanceProgramId.trim();
+      const realm = realmInput ? new PublicKey(realmInput).toBase58() : undefined;
+      const governanceProgramId = realm
+        ? (
+            governanceProgramInput
+              ? new PublicKey(governanceProgramInput)
+              : DEFAULT_SPL_GOVERNANCE_PROGRAM_ID
+          ).toBase58()
+        : undefined;
       const [distributor] = distributorClient.findDistributorPda(mint);
       const [vaultAuthority] = distributorClient.findVaultAuthorityPda(distributor);
       const vaultAta = getAssociatedTokenAddressSync(
@@ -1921,9 +1937,11 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
         TOKEN_PROGRAM_ID,
         ASSOCIATED_TOKEN_PROGRAM_ID
       );
+      const mintState = await getMint(connection, mint, "confirmed", TOKEN_PROGRAM_ID);
 
       const allocations = parseDistributorAllocationsInput(
-        distributorWizardAllocations
+        distributorWizardAllocations,
+        mintState.decimals
       );
       const leaves = allocations.map((allocation) =>
         computeLeaf(distributor, allocation.wallet, allocation.index, allocation.amount)
@@ -1940,6 +1958,10 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
       setDistributorClaimMint(mint.toBase58());
       setDistributorClaimVault(vaultAta.toBase58());
       setDistributorClaimDistributor(distributor.toBase58());
+      setDistributorClaimRealm(realm ?? "");
+      setDistributorClaimGovernanceProgramId(
+        governanceProgramId ?? DEFAULT_SPL_GOVERNANCE_PROGRAM_ID.toBase58()
+      );
       setDistributorWizardDistributorPda(distributor.toBase58());
       setDistributorWizardVaultAuthorityPda(vaultAuthority.toBase58());
       setDistributorWizardVaultAta(vaultAta.toBase58());
@@ -1965,6 +1987,8 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
             mint: mint.toBase58(),
             vault: vaultAta.toBase58(),
             distributor: distributor.toBase58(),
+            ...(realm ? { realm } : {}),
+            ...(governanceProgramId ? { governanceProgramId } : {}),
             index: allocation.index.toString(),
             amount: allocation.amount.toString(),
             root: rootHex,
@@ -1985,6 +2009,8 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
             mint: mint.toBase58(),
             vault: vaultAta.toBase58(),
             distributor: distributor.toBase58(),
+            ...(realm ? { realm } : {}),
+            ...(governanceProgramId ? { governanceProgramId } : {}),
             root: rootHex,
             claims: allocations.map((allocation, allocationIndex) => ({
               wallet: allocation.wallet.toBase58(),
@@ -2001,11 +2027,11 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
         severity: "success",
         message: claimantLoaded
           ? usedFallbackClaimant
-            ? `Generated root + claim manifest (${allocations.length} allocation(s)); loaded wallet claim for ${shortenAddress(claimantAddress)}.`
-            : `Generated root + claim manifest (${allocations.length} allocation(s)) and loaded claimant package.`
+            ? `Generated root + claim manifest (${allocations.length} allocation(s)); loaded wallet claim for ${shortenAddress(claimantAddress)}. Amounts parsed with mint decimals (${mintState.decimals}).`
+            : `Generated root + claim manifest (${allocations.length} allocation(s)) and loaded claimant package. Amounts parsed with mint decimals (${mintState.decimals}).`
           : configuredClaimantAddress
-            ? `Generated root + claim manifest (${allocations.length} allocation(s)), but claimant wallet is not present in allocations.`
-            : `Generated root + claim manifest (${allocations.length} allocation(s)). Set claimant wallet to auto-load one entry for testing.`
+            ? `Generated root + claim manifest (${allocations.length} allocation(s)), but claimant wallet is not present in allocations. Amounts parsed with mint decimals (${mintState.decimals}).`
+            : `Generated root + claim manifest (${allocations.length} allocation(s)). Amounts parsed with mint decimals (${mintState.decimals}). Set claimant wallet to auto-load one entry for testing.`
       });
     } catch (unknownError) {
       setStatus({
@@ -2203,7 +2229,9 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
       const signature = await runWalletTransaction(transaction);
       setStatus({
         severity: "success",
-        message: `Funded distributor vault with ${amountInput} token(s).`,
+        message:
+          `Funded distributor vault with ${amountInput} token(s) ` +
+          `(${amountBaseUnits.toString()} base units, decimals: ${mintState.decimals}).`,
         signature
       });
     } catch (unknownError) {
@@ -4464,7 +4492,7 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
                       Wizard: Mint → Vault → Root → Claim Package
                     </Typography>
                     <Typography variant="caption" color="text.secondary">
-                      One line per allocation: wallet,amountBaseUnits
+                      One line per allocation: wallet,amount (token units, converted by mint decimals)
                     </Typography>
                     <TextField
                       size="small"
@@ -4484,6 +4512,23 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
                       placeholder={publicKey?.toBase58() || ""}
                     />
                     <TextField
+                      size="small"
+                      label="Governance Realm (optional, include for claim + DAO deposit)"
+                      value={distributorWizardRealm}
+                      onChange={(event) => {
+                        setDistributorWizardRealm(event.target.value);
+                      }}
+                    />
+                    <TextField
+                      size="small"
+                      label="Governance Program ID (optional)"
+                      value={distributorWizardGovernanceProgramId}
+                      onChange={(event) => {
+                        setDistributorWizardGovernanceProgramId(event.target.value);
+                      }}
+                      placeholder={DEFAULT_SPL_GOVERNANCE_PROGRAM_ID.toBase58()}
+                    />
+                    <TextField
                       multiline
                       minRows={6}
                       size="small"
@@ -4492,7 +4537,7 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
                       onChange={(event) => {
                         setDistributorWizardAllocations(event.target.value);
                       }}
-                      placeholder={`WalletAddress1,1000000\nWalletAddress2,2500000`}
+                      placeholder={`WalletAddress1,1\nWalletAddress2,2.5`}
                     />
                     <Stack direction={{ xs: "column", md: "row" }} spacing={1}>
                       <Button
@@ -4504,7 +4549,9 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
                       </Button>
                       <Button
                         variant="contained"
-                        onClick={generateDistributorWizardRootAndClaimPackage}
+                        onClick={() => {
+                          void generateDistributorWizardRootAndClaimPackage();
+                        }}
                         disabled={isSubmitting}
                       >
                         Generate Root + Claim Package
@@ -4682,11 +4729,12 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
                     </Typography>
                     <TextField
                       size="small"
-                      label="Vault Funding Amount (tokens)"
+                      label="Vault Funding Amount (token units)"
                       value={distributorIssueFundAmount}
                       onChange={(event) => {
                         setDistributorIssueFundAmount(event.target.value);
                       }}
+                      helperText="Human-readable amount; converted using mint decimals."
                       placeholder="100"
                     />
                     <Button
@@ -4828,6 +4876,9 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
                       </Typography>
                     ) : null}
                     <Typography variant="caption" color="text.secondary">
+                      Governance realm/program are sourced from Quick Wizard or claim JSON.
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
                       Manual mode: proof nodes are one 32-byte hex string per line. Amount uses raw base units.
                     </Typography>
                     <TextField
@@ -4853,23 +4904,6 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
                       onChange={(event) => {
                         setDistributorClaimDistributor(event.target.value);
                       }}
-                    />
-                    <TextField
-                      size="small"
-                      label="Governance Realm (optional, enables claim + deposit)"
-                      value={distributorClaimRealm}
-                      onChange={(event) => {
-                        setDistributorClaimRealm(event.target.value);
-                      }}
-                    />
-                    <TextField
-                      size="small"
-                      label="Governance Program ID (optional)"
-                      value={distributorClaimGovernanceProgramId}
-                      onChange={(event) => {
-                        setDistributorClaimGovernanceProgramId(event.target.value);
-                      }}
-                      placeholder={DEFAULT_SPL_GOVERNANCE_PROGRAM_ID.toBase58()}
                     />
                     <Stack direction={{ xs: "column", md: "row" }} spacing={1}>
                       <TextField
