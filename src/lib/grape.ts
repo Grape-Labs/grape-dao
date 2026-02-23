@@ -77,9 +77,9 @@ export const grapeProducts: GrapeProduct[] = [
     description:
       "Auxiliary helper primitive for bundled token sends to reduce transaction overhead.",
     ctaLabel: "View Program",
+    href: "https://explorer.solana.com/address/TbpjRtCg2Z2n2Xx7pFm5HVwsjx9GPJ5MsrfBvCoQRNL?cluster=mainnet",
     programId: "TbpjRtCg2Z2n2Xx7pFm5HVwsjx9GPJ5MsrfBvCoQRNL",
     isAuxiliary: true,
-    addressPending: true,
     logoGrayscale: true,
     logo: grapeAvatar
   },

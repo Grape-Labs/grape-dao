@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
-import { PublicKey, Transaction } from "@solana/web3.js";
+import { PublicKey, Transaction, type TransactionInstruction } from "@solana/web3.js";
 import {
   GrapeDistributorClient,
   computeLeaf,
@@ -34,6 +34,8 @@ type ClaimCandidate = {
   mint: PublicKey;
   vault: PublicKey;
   distributor: PublicKey;
+  realm?: PublicKey;
+  governanceProgramId?: PublicKey;
   index: bigint;
   amount: bigint;
   proof: Uint8Array[];
@@ -72,6 +74,19 @@ function toBigIntStrict(value: unknown, label: string) {
   throw new Error(`${label} must be a number or string.`);
 }
 
+function parseOptionalPublicKey(value: unknown, label: string) {
+  if (value === undefined || value === null || value === "") {
+    return undefined;
+  }
+  if (value instanceof PublicKey) {
+    return value;
+  }
+  if (typeof value !== "string") {
+    throw new Error(`${label} must be a base58 address string.`);
+  }
+  return new PublicKey(value);
+}
+
 type ClaimPayload = Record<string, unknown>;
 
 function normalizeClaimCandidates(
@@ -95,6 +110,17 @@ function normalizeClaimCandidates(
     const distributor = claim.distributor
       ? new PublicKey(String(claim.distributor))
       : client.findDistributorPda(mint)[0];
+    const realm = parseOptionalPublicKey(
+      claim.realm ?? data.realm,
+      `claims[${claimIndex}] realm`
+    );
+    const governanceProgramId = parseOptionalPublicKey(
+      claim.governanceProgramId ??
+        claim.governanceProgram ??
+        data.governanceProgramId ??
+        data.governanceProgram,
+      `claims[${claimIndex}] governanceProgramId`
+    );
     const root =
       typeof claim.root === "string" || typeof claim.merkleRoot === "string"
         ? parseHex32(String(claim.root ?? claim.merkleRoot), `claims[${claimIndex}] root`)
@@ -117,6 +143,8 @@ function normalizeClaimCandidates(
       mint,
       vault,
       distributor,
+      realm,
+      governanceProgramId,
       index,
       amount,
       proof,
@@ -134,6 +162,17 @@ function normalizeClaimCandidates(
     const distributor = campaign.distributor
       ? new PublicKey(String(campaign.distributor))
       : client.findDistributorPda(mint)[0];
+    const campaignRealm = parseOptionalPublicKey(
+      campaign.realm ?? data.realm,
+      `campaigns[${campaignIndex}] realm`
+    );
+    const campaignGovernanceProgramId = parseOptionalPublicKey(
+      campaign.governanceProgramId ??
+        campaign.governanceProgram ??
+        data.governanceProgramId ??
+        data.governanceProgram,
+      `campaigns[${campaignIndex}] governanceProgramId`
+    );
     const root =
       typeof campaign.root === "string" || typeof campaign.merkleRoot === "string"
         ? parseHex32(
@@ -152,6 +191,16 @@ function normalizeClaimCandidates(
       : [];
 
     claims.forEach((claim, claimIndex) => {
+      const claimRealm = parseOptionalPublicKey(
+        claim.realm ?? campaignRealm,
+        `campaigns[${campaignIndex}].claims[${claimIndex}] realm`
+      );
+      const claimGovernanceProgramId = parseOptionalPublicKey(
+        claim.governanceProgramId ??
+          claim.governanceProgram ??
+          campaignGovernanceProgramId,
+        `campaigns[${campaignIndex}].claims[${claimIndex}] governanceProgramId`
+      );
       const proof = parseProof(
         claim.proof,
         `campaigns[${campaignIndex}].claims[${claimIndex}]`
@@ -174,6 +223,8 @@ function normalizeClaimCandidates(
         mint,
         vault,
         distributor,
+        realm: claimRealm,
+        governanceProgramId: claimGovernanceProgramId,
         index,
         amount,
         proof,
@@ -192,6 +243,9 @@ type EligibleClaim = ClaimCandidate & {
 };
 
 const DEFAULT_MANIFEST_URL = "/claims/manifest.json";
+const DEFAULT_SPL_GOVERNANCE_PROGRAM_ID = new PublicKey(
+  "GovER5Lthms3bLBqWub97yVrMmEogzX7xNjdXpPPCVZw"
+);
 
 export function ClaimConsole() {
   const { connection } = useConnection();
@@ -319,15 +373,34 @@ export function ClaimConsole() {
     setIsClaimingId(entry.id);
     setStatus(null);
     try {
-      const { instructions } = await distributorClient.buildClaimInstructions({
-        claimant: publicKey,
-        mint: entry.mint,
-        vault: entry.vault,
-        index: entry.index,
-        amount: entry.amount,
-        proof: entry.proof,
-        distributor: entry.distributor
-      });
+      let instructions: TransactionInstruction[];
+      if (entry.realm) {
+        const governanceBuild =
+          await distributorClient.buildClaimAndDepositToRealmInstructions({
+            claimant: publicKey,
+            mint: entry.mint,
+            vault: entry.vault,
+            index: entry.index,
+            amount: entry.amount,
+            proof: entry.proof,
+            distributor: entry.distributor,
+            realm: entry.realm,
+            governanceProgramId:
+              entry.governanceProgramId ?? DEFAULT_SPL_GOVERNANCE_PROGRAM_ID
+          });
+        instructions = governanceBuild.instructions;
+      } else {
+        const claimBuild = await distributorClient.buildClaimInstructions({
+          claimant: publicKey,
+          mint: entry.mint,
+          vault: entry.vault,
+          index: entry.index,
+          amount: entry.amount,
+          proof: entry.proof,
+          distributor: entry.distributor
+        });
+        instructions = claimBuild.instructions;
+      }
       const signature = await sendTransaction(
         new Transaction().add(...instructions),
         connection
@@ -336,7 +409,9 @@ export function ClaimConsole() {
 
       setStatus({
         severity: "success",
-        message: "Claim transaction confirmed.",
+        message: entry.realm
+          ? "Claim + governance deposit transaction confirmed."
+          : "Claim transaction confirmed.",
         signature
       });
       await loadEligibleClaims();
@@ -367,7 +442,7 @@ export function ClaimConsole() {
         <Stack spacing={1.2}>
           <Stack direction={{ xs: "column", md: "row" }} spacing={1} alignItems={{ md: "center" }}>
             <Typography variant="subtitle1">Claim Tokens</Typography>
-            <Chip size="small" variant="outlined" label="Wallet-only flow" />
+            <Chip size="small" variant="outlined" label="Wallet claim flow" />
             <Chip
               size="small"
               variant="outlined"
@@ -457,6 +532,18 @@ export function ClaimConsole() {
                       >
                         Amount (base units): {entry.amount.toString()}
                       </Typography>
+                      {entry.realm ? (
+                        <Typography
+                          variant="caption"
+                          color="text.secondary"
+                          sx={{
+                            fontFamily: "var(--font-mono), monospace",
+                            wordBreak: "break-all"
+                          }}
+                        >
+                          Realm Deposit: {entry.realm.toBase58()}
+                        </Typography>
+                      ) : null}
                       <Typography
                         variant="caption"
                         color="text.secondary"
@@ -471,7 +558,11 @@ export function ClaimConsole() {
                         }}
                         disabled={entry.alreadyClaimed || isClaimingId === entry.id}
                       >
-                        {isClaimingId === entry.id ? "Claiming..." : "Claim"}
+                        {isClaimingId === entry.id
+                          ? "Claiming..."
+                          : entry.realm
+                            ? "Claim + Deposit"
+                            : "Claim"}
                       </Button>
                     </Stack>
                   </CardContent>
