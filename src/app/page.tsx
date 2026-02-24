@@ -248,9 +248,6 @@ export default function Home() {
                     <Button variant="outlined" color="primary" href="/nft">
                       NFT Tools
                     </Button>
-                    <Button variant="outlined" color="primary" href="/claim">
-                      Claim
-                    </Button>
                     <Button variant="outlined" color="primary" href="/faq">
                       FAQ
                     </Button>

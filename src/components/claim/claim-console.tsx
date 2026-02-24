@@ -19,9 +19,9 @@ import {
   Chip,
   CircularProgress,
   Stack,
+  TextField,
   Typography
 } from "@mui/material";
-import { grapeLinks } from "@/lib/grape";
 
 type ClaimStatusState = {
   severity: "success" | "error" | "info";
@@ -317,7 +317,6 @@ type EligibleClaim = ClaimCandidate & {
   alreadyClaimed: boolean;
 };
 
-const DEFAULT_MANIFEST_URL = "/claims/manifest.json";
 const DEFAULT_SPL_GOVERNANCE_PROGRAM_ID = new PublicKey(
   "GovER5Lthms3bLBqWub97yVrMmEogzX7xNjdXpPPCVZw"
 );
@@ -337,11 +336,8 @@ export function ClaimConsole() {
   const [lastCheckedAt, setLastCheckedAt] = useState<string | null>(null);
 
   const envManifestUrl = process.env.NEXT_PUBLIC_GRAPE_CLAIMS_MANIFEST_URL || "";
-  const configuredManifestUrl = grapeLinks.claimManifest || "";
-  const manifestUrl =
-    queryManifestUrl || envManifestUrl || configuredManifestUrl || DEFAULT_MANIFEST_URL;
-  const isFallbackManifestSource =
-    !queryManifestUrl && !envManifestUrl && !configuredManifestUrl;
+  const manifestUrl = queryManifestUrl || envManifestUrl;
+  const isFallbackManifestSource = !queryManifestUrl && !envManifestUrl;
   const distributorClient = useMemo(
     () => new GrapeDistributorClient(connection),
     [connection]
@@ -365,6 +361,11 @@ export function ClaimConsole() {
     setIsChecking(true);
     setStatus(null);
     try {
+      if (!manifestUrl) {
+        throw new Error(
+          "Manifest URL is required. Paste one below or open /claim?manifest=<URL>."
+        );
+      }
       const response = await fetch(manifestUrl, { cache: "no-store" });
       if (!response.ok) {
         throw new Error(
@@ -380,7 +381,7 @@ export function ClaimConsole() {
         setStatus({
           severity: "info",
           message: isFallbackManifestSource
-            ? "Claim manifest is empty/not configured. Publish your generated manifest and open /claim?manifest=<URL> (or set NEXT_PUBLIC_GRAPE_CLAIMS_MANIFEST_URL)."
+            ? "Claim manifest is not configured. Enter a manifest URL below or open /claim?manifest=<URL>."
             : "Claim manifest loaded, but it contains no claim entries."
         });
         return;
@@ -584,8 +585,22 @@ export function ClaimConsole() {
             color="text.secondary"
             sx={{ wordBreak: "break-all", fontFamily: "var(--font-mono), monospace" }}
           >
-            Claim source: {manifestUrl}
+            Claim source: {manifestUrl || "Not set"}
           </Typography>
+          <TextField
+            size="small"
+            label="Claim Manifest URL"
+            value={queryManifestUrl}
+            onChange={(event) => {
+              setQueryManifestUrl(event.target.value.trim());
+            }}
+            placeholder="https://gateway.irys.xyz/..."
+            helperText={
+              envManifestUrl
+                ? "Leave empty to use NEXT_PUBLIC_GRAPE_CLAIMS_MANIFEST_URL."
+                : "Required unless URL query param includes ?manifest=..."
+            }
+          />
 
           <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
             <Button variant="contained" onClick={() => setVisible(true)}>

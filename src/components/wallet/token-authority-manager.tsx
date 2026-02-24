@@ -668,6 +668,8 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
   const [distributorIssueVault, setDistributorIssueVault] = useState("");
   const [distributorIssueMerkleRoot, setDistributorIssueMerkleRoot] = useState("");
   const [distributorIssueFundAmount, setDistributorIssueFundAmount] = useState("");
+  const [distributorIssueClawbackAmount, setDistributorIssueClawbackAmount] =
+    useState("");
   const [distributorIssueStartAt, setDistributorIssueStartAt] = useState(() =>
     toDateTimeLocalInput(Math.floor(Date.now() / 1000))
   );
@@ -2316,6 +2318,105 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
           unknownError instanceof Error
             ? unknownError.message
             : "Failed to fund distributor vault."
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const clawbackDistributorVaultToConnectedWallet = async () => {
+    if (!publicKey) {
+      setStatus({ severity: "error", message: "Connect your wallet first." });
+      return;
+    }
+
+    setIsSubmitting(true);
+    setStatus(null);
+    try {
+      const mint = new PublicKey(distributorIssueMint.trim());
+      const vault = new PublicKey(distributorIssueVault.trim());
+      const mintState = await getMint(connection, mint, "confirmed", TOKEN_PROGRAM_ID);
+      const [distributor] = distributorClient.findDistributorPda(mint);
+      const distributorAccount = await distributorClient.fetchDistributor(distributor);
+      if (!distributorAccount) {
+        throw new Error(
+          `Distributor account not found at ${distributor.toBase58()}. Initialize it first.`
+        );
+      }
+      if (!distributorAccount.authority.equals(publicKey)) {
+        throw new Error(
+          `Connected wallet is not distributor authority. Authority: ${distributorAccount.authority.toBase58()}`
+        );
+      }
+
+      const [vaultAuthority] = distributorClient.findVaultAuthorityPda(distributor);
+      const expectedVault = getAssociatedTokenAddressSync(
+        mint,
+        vaultAuthority,
+        true,
+        TOKEN_PROGRAM_ID,
+        ASSOCIATED_TOKEN_PROGRAM_ID
+      );
+      if (!vault.equals(expectedVault)) {
+        throw new Error(
+          `Vault token account does not match derived vault ATA for this distributor. Expected ${expectedVault.toBase58()}.`
+        );
+      }
+
+      const vaultBalance = await connection.getTokenAccountBalance(vault, "confirmed");
+      const vaultAmount = BigInt(vaultBalance.value.amount);
+      if (vaultAmount <= 0n) {
+        throw new Error("Vault balance is zero.");
+      }
+
+      const requestedAmountInput = distributorIssueClawbackAmount.trim();
+      const amountBaseUnits = requestedAmountInput
+        ? parseAmountToBaseUnits(requestedAmountInput, mintState.decimals)
+        : vaultAmount;
+      if (amountBaseUnits <= 0n) {
+        throw new Error("Clawback amount must be greater than zero.");
+      }
+      if (amountBaseUnits > vaultAmount) {
+        throw new Error(
+          `Clawback amount exceeds vault balance. Available: ${vaultBalance.value.uiAmountString ?? vaultBalance.value.amount}`
+        );
+      }
+
+      const { instruction, authorityAta } = distributorClient.buildClawbackInstruction({
+        authority: publicKey,
+        mint,
+        distributor,
+        vault,
+        amount: amountBaseUnits
+      });
+      const signature = await runWalletTransaction(
+        new Transaction().add(
+          createAssociatedTokenAccountIdempotentInstruction(
+            publicKey,
+            authorityAta,
+            publicKey,
+            mint,
+            TOKEN_PROGRAM_ID,
+            ASSOCIATED_TOKEN_PROGRAM_ID
+          ),
+          instruction
+        )
+      );
+
+      setStatus({
+        severity: "success",
+        message:
+          `Clawback completed. Reclaimed ${amountBaseUnits.toString()} base units ` +
+          `(${mintState.decimals} decimals) to ATA ${authorityAta.toBase58()}.`,
+        signature
+      });
+    } catch (unknownError) {
+      setStatus({
+        severity: "error",
+        message:
+          unknownError instanceof Error
+            ? unknownError.message
+            : "Failed to claw back distributor vault funds."
       });
     } finally {
       setIsSubmitting(false);
@@ -4658,6 +4759,9 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
                         setDistributorWizardMint(event.target.value);
                       }}
                     />
+                    <Typography variant="caption" color="text.secondary">
+                      Distributor and vault are deterministic per mint. Reusing the same mint reuses the same distributor/vault; use a new mint for a separate distributor instance.
+                    </Typography>
                     <TextField
                       size="small"
                       label="Claimant Wallet (optional, defaults to connected wallet)"
@@ -4832,6 +4936,9 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
                     <Typography variant="caption" color="text.secondary">
                       Initialize distributor once, then rotate roots as claims change. Root must be 32-byte hex.
                     </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      New claim campaigns for the same mint reuse this distributor/vault. Publish a new root + manifest per campaign, or use a new mint for isolated vaults.
+                    </Typography>
                     <Alert severity="info">
                       Setup flow: 1) prepare claim package JSON + root, 2) initialize distributor,
                       3) optionally upload package to Irys, 4) share package URL with claimants.
@@ -4916,6 +5023,29 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
                       disabled={!connected || isSubmitting}
                     >
                       Fund Vault
+                    </Button>
+                    <Typography variant="caption" color="text.secondary">
+                      Clawback helper: directly withdraws distributor vault tokens to your connected-wallet ATA
+                      using the distributor authority.
+                    </Typography>
+                    <TextField
+                      size="small"
+                      label="Clawback Amount (token units, empty = full vault)"
+                      value={distributorIssueClawbackAmount}
+                      onChange={(event) => {
+                        setDistributorIssueClawbackAmount(event.target.value);
+                      }}
+                      placeholder="Leave empty for full vault"
+                    />
+                    <Button
+                      variant="outlined"
+                      color="warning"
+                      onClick={() => {
+                        void clawbackDistributorVaultToConnectedWallet();
+                      }}
+                      disabled={!connected || isSubmitting}
+                    >
+                      Claw Back Vault to Connected Wallet
                     </Button>
                     <TextField
                       size="small"
