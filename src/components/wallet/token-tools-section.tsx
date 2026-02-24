@@ -1,37 +1,26 @@
 "use client";
 
-import { useWallet } from "@solana/wallet-adapter-react";
-import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import {
   Accordion,
   AccordionDetails,
   AccordionSummary,
   Box,
-  Button,
   Card,
   CardContent,
-  Chip,
   Stack,
   Typography
 } from "@mui/material";
 import { useState } from "react";
 import { HoldingsPanel } from "@/components/wallet/holdings-panel";
 import { TokenAuthorityManager } from "@/components/wallet/token-authority-manager";
+import { WalletConnectControl } from "@/components/wallet/wallet-connect-control";
 import { useWalletHoldings } from "@/hooks/use-wallet-holdings";
 
-function shortenAddress(address: string) {
-  return `${address.slice(0, 6)}...${address.slice(-6)}`;
-}
-
 export function TokenToolsSection() {
-  const { connected, publicKey, disconnect, wallet } = useWallet();
-  const { setVisible } = useWalletModal();
   const holdingsState = useWalletHoldings();
   const [expandedSection, setExpandedSection] = useState<string | false>(
     "operations"
   );
-
-  const walletLabel = publicKey ? shortenAddress(publicKey.toBase58()) : "Connect Identity";
 
   return (
     <Card
@@ -58,35 +47,7 @@ export function TokenToolsSection() {
             </Typography>
           </Box>
 
-          <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ sm: "center" }}>
-            <Button
-              variant="contained"
-              onClick={() => setVisible(true)}
-              sx={{ width: { xs: "100%", sm: "auto" }, minWidth: 170 }}
-            >
-              {walletLabel}
-            </Button>
-            {connected ? (
-              <Button
-                variant="outlined"
-                color="inherit"
-                onClick={() => {
-                  void disconnect();
-                }}
-                sx={{ width: { xs: "100%", sm: "auto" } }}
-              >
-                Disconnect
-              </Button>
-            ) : null}
-            {wallet?.adapter.name ? (
-              <Chip
-                variant="outlined"
-                label={wallet.adapter.name}
-                sx={{ borderColor: "rgba(190, 214, 205, 0.2)" }}
-              />
-            ) : null}
-            <Chip variant="outlined" color="secondary" label="Mainnet" />
-          </Stack>
+          <WalletConnectControl connectText="Connect Identity" />
 
           <Accordion
             expanded={expandedSection === "operations"}

@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
-import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { PublicKey, Transaction, type TransactionInstruction } from "@solana/web3.js";
 import { TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID, getMint } from "@solana/spl-token";
 import {
@@ -22,6 +21,7 @@ import {
   TextField,
   Typography
 } from "@mui/material";
+import { WalletConnectControl } from "@/components/wallet/wallet-connect-control";
 
 type ClaimStatusState = {
   severity: "success" | "error" | "info";
@@ -314,6 +314,7 @@ function normalizeClaimCandidates(
 
 type EligibleClaim = ClaimCandidate & {
   claimStatusPda: PublicKey;
+  claimStatusExists: boolean;
   alreadyClaimed: boolean;
 };
 
@@ -324,7 +325,6 @@ const DEFAULT_SPL_GOVERNANCE_PROGRAM_ID = new PublicKey(
 export function ClaimConsole() {
   const { connection } = useConnection();
   const { connected, publicKey, sendTransaction } = useWallet();
-  const { setVisible } = useWalletModal();
   const [queryManifestUrl, setQueryManifestUrl] = useState("");
   const [isChecking, setIsChecking] = useState(false);
   const [isClaimingId, setIsClaimingId] = useState<string | null>(null);
@@ -414,9 +414,11 @@ export function ClaimConsole() {
           const claimStatusAccount = await distributorClient.fetchClaimStatus(
             claimStatusPda
           );
+          const claimStatusExists = Boolean(claimStatusAccount);
           return {
             ...candidate,
             claimStatusPda,
+            claimStatusExists,
             alreadyClaimed: Boolean(claimStatusAccount?.claimed)
           } satisfies EligibleClaim;
         })
@@ -485,6 +487,20 @@ export function ClaimConsole() {
     setIsClaimingId(entry.id);
     setStatus(null);
     try {
+      const latestClaimStatus = await distributorClient.fetchClaimStatus(
+        entry.claimStatusPda
+      );
+      if (latestClaimStatus) {
+        const statusLabel = latestClaimStatus.claimed
+          ? "already claimed"
+          : "already initialized";
+        throw new Error(
+          `Claim status already exists for index ${entry.index.toString()} (${statusLabel}). ` +
+          `PDA: ${entry.claimStatusPda.toBase58()}. ` +
+          "Use a new index/manifest, or close claim status for this exact index if allowed."
+        );
+      }
+
       let instructions: TransactionInstruction[];
       if (entry.realm) {
         const governanceBuild =
@@ -603,20 +619,21 @@ export function ClaimConsole() {
             }
           />
 
-          <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
-            <Button variant="contained" onClick={() => setVisible(true)}>
-              {connected && publicKey ? "Wallet Connected" : "Connect Wallet"}
-            </Button>
-            <Button
-              variant="outlined"
-              onClick={() => {
-                void loadEligibleClaims();
-              }}
-              disabled={!connected || isChecking}
-            >
-              Check My Claims
-            </Button>
-          </Stack>
+          <WalletConnectControl
+            connectText="Connect Wallet"
+            connectedLabelMode="status"
+            showDisconnect={false}
+            rpcSettingsTitle="Claim RPC Provider"
+          />
+          <Button
+            variant="outlined"
+            onClick={() => {
+              void loadEligibleClaims();
+            }}
+            disabled={!connected || isChecking}
+          >
+            Check My Claims
+          </Button>
 
           {status ? (
             <Alert
@@ -660,8 +677,20 @@ export function ClaimConsole() {
                         <Chip
                           size="small"
                           variant="outlined"
-                          color={entry.alreadyClaimed ? "success" : "warning"}
-                          label={entry.alreadyClaimed ? "Already Claimed" : "Claim Available"}
+                          color={
+                            entry.alreadyClaimed
+                              ? "success"
+                              : entry.claimStatusExists
+                                ? "error"
+                                : "warning"
+                          }
+                          label={
+                            entry.alreadyClaimed
+                              ? "Already Claimed"
+                              : entry.claimStatusExists
+                                ? "Claim Status Exists"
+                                : "Claim Available"
+                          }
                         />
                       </Stack>
                       <Typography
@@ -714,7 +743,11 @@ export function ClaimConsole() {
                         onClick={() => {
                           void claimOne(entry);
                         }}
-                        disabled={entry.alreadyClaimed || isClaimingId === entry.id}
+                        disabled={
+                          entry.alreadyClaimed ||
+                          entry.claimStatusExists ||
+                          isClaimingId === entry.id
+                        }
                       >
                         {isClaimingId === entry.id
                           ? "Claiming..."

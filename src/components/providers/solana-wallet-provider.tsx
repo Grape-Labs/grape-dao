@@ -51,6 +51,10 @@ const RPC_PROVIDER_OPTIONS: RpcProviderOption[] = [
   {
     label: "Solana Mainnet Beta",
     value: clusterApiUrl("mainnet-beta")
+  },
+  {
+    label: "Solana Devnet",
+    value: clusterApiUrl("devnet")
   }
 ];
 
