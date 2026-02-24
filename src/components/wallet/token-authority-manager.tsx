@@ -25,6 +25,7 @@ import {
 } from "@solana/spl-token";
 import {
   type ParsedAccountData,
+  LAMPORTS_PER_SOL,
   PublicKey,
   SYSVAR_RENT_PUBKEY,
   SystemProgram,
@@ -120,6 +121,13 @@ type AuthorityInventoryRow = {
   riskFlags: string[];
 };
 
+type UpgradeableBufferRow = {
+  address: string;
+  authority: string;
+  dataLen: number;
+  lamports: number;
+};
+
 type StatusState = {
   severity: "success" | "error" | "info";
   message: string;
@@ -137,6 +145,12 @@ const TOKEN_PROGRAM_OPTIONS = [
 const DEFAULT_SPL_GOVERNANCE_PROGRAM_ID = new PublicKey(
   "GovER5Lthms3bLBqWub97yVrMmEogzX7xNjdXpPPCVZw"
 );
+const UPGRADEABLE_LOADER_PROGRAM_ID = new PublicKey(
+  "BPFLoaderUpgradeab1e11111111111111111111111"
+);
+const UPGRADEABLE_LOADER_BUFFER_STATE = 1;
+const UPGRADEABLE_LOADER_BUFFER_META_SIZE = 37;
+const UPGRADEABLE_LOADER_CLOSE_INSTRUCTION_INDEX = 5;
 
 function parseAmountToBaseUnits(input: string, decimals: number): bigint {
   const normalized = input.trim();
@@ -187,6 +201,13 @@ function formatRawUnits(raw: bigint, decimals: number) {
   const whole = padded.slice(0, -decimals).replace(/^0+/, "") || "0";
   const fraction = padded.slice(-decimals).replace(/0+$/, "");
   return fraction ? `${whole}.${fraction}` : whole;
+}
+
+function formatLamportsSol(lamports: number) {
+  return (lamports / LAMPORTS_PER_SOL).toLocaleString(undefined, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 9
+  });
 }
 
 function parseAtomicAmount(value: unknown): bigint {
@@ -632,6 +653,14 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
   >([]);
   const [authorityInventoryLoading, setAuthorityInventoryLoading] = useState(false);
   const [authorityInventoryInput, setAuthorityInventoryInput] = useState("");
+  const [upgradeableBufferAuthority, setUpgradeableBufferAuthority] = useState("");
+  const [upgradeableBufferCloseRecipient, setUpgradeableBufferCloseRecipient] =
+    useState("");
+  const [upgradeableBufferRows, setUpgradeableBufferRows] = useState<
+    UpgradeableBufferRow[]
+  >([]);
+  const [upgradeableBufferRowsLoading, setUpgradeableBufferRowsLoading] =
+    useState(false);
   const [rotationTargetMints, setRotationTargetMints] = useState("");
   const [rotationNewAuthority, setRotationNewAuthority] = useState("");
   const [rotateMintAuthorityEnabled, setRotateMintAuthorityEnabled] =
@@ -1499,6 +1528,159 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
     await connection.confirmTransaction(signature, "confirmed");
     refresh();
     return signature;
+  };
+
+  const loadUpgradeableLoaderBuffers = async () => {
+    if (!publicKey) {
+      setStatus({ severity: "error", message: "Connect your wallet first." });
+      return;
+    }
+
+    setUpgradeableBufferRowsLoading(true);
+    try {
+      const authority = new PublicKey(
+        (upgradeableBufferAuthority.trim() || publicKey.toBase58()).trim()
+      );
+      setUpgradeableBufferAuthority(authority.toBase58());
+
+      const accounts = await connection.getProgramAccounts(
+        UPGRADEABLE_LOADER_PROGRAM_ID,
+        {
+          commitment: "confirmed",
+          filters: [{ memcmp: { offset: 5, bytes: authority.toBase58() } }]
+        }
+      );
+
+      const rows = accounts
+        .map((account) => {
+          const data = account.account.data;
+          if (data.length < UPGRADEABLE_LOADER_BUFFER_META_SIZE) {
+            return null;
+          }
+          if (readU32LE(data, 0) !== UPGRADEABLE_LOADER_BUFFER_STATE) {
+            return null;
+          }
+          if (data[4] !== 1) {
+            return null;
+          }
+          const recordAuthority = new PublicKey(data.slice(5, 37)).toBase58();
+          if (recordAuthority !== authority.toBase58()) {
+            return null;
+          }
+          return {
+            address: account.pubkey.toBase58(),
+            authority: recordAuthority,
+            dataLen: Math.max(data.length - UPGRADEABLE_LOADER_BUFFER_META_SIZE, 0),
+            lamports: account.account.lamports
+          } satisfies UpgradeableBufferRow;
+        })
+        .filter((row): row is UpgradeableBufferRow => Boolean(row))
+        .sort((left, right) => right.lamports - left.lamports);
+
+      setUpgradeableBufferRows(rows);
+      setStatus({
+        severity: "success",
+        message: `Found ${rows.length} upgradeable buffer account(s) for authority ${authority.toBase58()}.`
+      });
+    } catch (unknownError) {
+      setUpgradeableBufferRows([]);
+      setStatus({
+        severity: "error",
+        message:
+          unknownError instanceof Error
+            ? unknownError.message
+            : "Failed to load program buffers."
+      });
+    } finally {
+      setUpgradeableBufferRowsLoading(false);
+    }
+  };
+
+  const closeUpgradeableLoaderBuffer = async (bufferAddress: string) => {
+    if (!publicKey) {
+      setStatus({ severity: "error", message: "Connect your wallet first." });
+      return;
+    }
+
+    setIsSubmitting(true);
+    setStatus(null);
+    try {
+      const authority = new PublicKey(
+        (upgradeableBufferAuthority.trim() || publicKey.toBase58()).trim()
+      );
+      if (!authority.equals(publicKey)) {
+        throw new Error(
+          "Connected wallet must match the selected buffer authority to close buffers."
+        );
+      }
+
+      const recipient = new PublicKey(
+        (upgradeableBufferCloseRecipient.trim() || publicKey.toBase58()).trim()
+      );
+      const buffer = new PublicKey(bufferAddress);
+      const bufferInfo = await connection.getAccountInfo(buffer, "confirmed");
+      if (!bufferInfo) {
+        throw new Error(`Buffer account not found: ${buffer.toBase58()}`);
+      }
+      if (!bufferInfo.owner.equals(UPGRADEABLE_LOADER_PROGRAM_ID)) {
+        throw new Error("Account is not owned by the upgradeable loader program.");
+      }
+      if (bufferInfo.data.length < UPGRADEABLE_LOADER_BUFFER_META_SIZE) {
+        throw new Error("Buffer account data is too small.");
+      }
+      if (readU32LE(bufferInfo.data, 0) !== UPGRADEABLE_LOADER_BUFFER_STATE) {
+        throw new Error("Account is not a buffer state account.");
+      }
+      if (bufferInfo.data[4] !== 1) {
+        throw new Error("Buffer has no authority and cannot be closed by wallet.");
+      }
+      const recordAuthority = new PublicKey(bufferInfo.data.slice(5, 37));
+      if (!recordAuthority.equals(publicKey)) {
+        throw new Error(
+          `Connected wallet is not buffer authority. Authority: ${recordAuthority.toBase58()}`
+        );
+      }
+
+      const data = Buffer.alloc(4);
+      data.writeUInt32LE(UPGRADEABLE_LOADER_CLOSE_INSTRUCTION_INDEX, 0);
+      const instruction = new TransactionInstruction({
+        programId: UPGRADEABLE_LOADER_PROGRAM_ID,
+        keys: [
+          { pubkey: buffer, isSigner: false, isWritable: true },
+          { pubkey: recipient, isSigner: false, isWritable: true },
+          { pubkey: publicKey, isSigner: true, isWritable: false }
+        ],
+        data
+      });
+
+      const signature = await runWalletTransaction(
+        new Transaction().add(instruction)
+      );
+      setStatus({
+        severity: "success",
+        message:
+          `Closed buffer ${buffer.toBase58()} and sent reclaimed lamports to ${recipient.toBase58()}.`,
+        signature
+      });
+      void loadUpgradeableLoaderBuffers();
+    } catch (unknownError) {
+      const fallback =
+        unknownError instanceof Error
+          ? unknownError.message
+          : "Failed to close buffer account.";
+      const lower = fallback.toLowerCase();
+      const withHint =
+        lower.includes("invalid instruction data") ||
+        lower.includes("unknown instruction")
+          ? `${fallback} Close instruction may be unavailable for this cluster/program version.`
+          : fallback;
+      setStatus({
+        severity: "error",
+        message: withHint
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const applyTokenProgram = () => {
@@ -2853,17 +3035,22 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
       if (!distributor) {
         throw new Error("Set distributor PDA or mint address first.");
       }
+      const index = BigInt(distributorClaimIndex.trim());
+      if (index < 0n) {
+        throw new Error("Claim index must be non-negative.");
+      }
 
       const { instruction, claimStatus } =
         distributorClient.buildCloseClaimStatusInstruction({
           claimant: publicKey,
-          distributor
+          distributor,
+          index
         });
       const signature = await runWalletTransaction(new Transaction().add(instruction));
       setStatus({
         severity: "success",
         message:
-          `Claim status closed: ${claimStatus.toBase58()}. ` +
+          `Claim status closed for index ${index.toString()}: ${claimStatus.toBase58()}. ` +
           "Claim status rent has been returned to the claimant wallet.",
         signature
       });
@@ -3766,9 +3953,9 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
           </Accordion>
 
           <Accordion
-            expanded={expandedOperation === "bulk-rotation"}
+            expanded={expandedOperation === "program-buffers"}
             onChange={(_event, isExpanded) => {
-              setExpandedOperation(isExpanded ? "bulk-rotation" : false);
+              setExpandedOperation(isExpanded ? "program-buffers" : false);
             }}
             disableGutters
             sx={{
@@ -3782,11 +3969,142 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
             <AccordionSummary
               expandIcon={
                 <Typography color="text.secondary">
+                  {expandedOperation === "program-buffers" ? "−" : "+"}
+                </Typography>
+              }
+            >
+              <Typography variant="subtitle2">2. Program Buffers (Upgradeable Loader)</Typography>
+            </AccordionSummary>
+            <AccordionDetails sx={{ pt: 0.5 }}>
+              <Card variant="outlined" sx={{ borderRadius: 1.5 }}>
+                <CardContent sx={{ p: 1.2 }}>
+                  <Stack spacing={1}>
+                    <Typography variant="subtitle2">Program Buffers (Upgradeable Loader)</Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Equivalent to `solana program show --buffers` scoped by authority. Load buffers and close selected ones from this UI.
+                    </Typography>
+                    <TextField
+                      size="small"
+                      label="Buffer Authority (empty = connected wallet)"
+                      value={upgradeableBufferAuthority}
+                      onChange={(event) => {
+                        setUpgradeableBufferAuthority(event.target.value);
+                      }}
+                    />
+                    <TextField
+                      size="small"
+                      label="Close Recipient (empty = connected wallet)"
+                      value={upgradeableBufferCloseRecipient}
+                      onChange={(event) => {
+                        setUpgradeableBufferCloseRecipient(event.target.value);
+                      }}
+                    />
+                    <Button
+                      variant="outlined"
+                      onClick={() => {
+                        void loadUpgradeableLoaderBuffers();
+                      }}
+                      disabled={!connected || upgradeableBufferRowsLoading}
+                    >
+                      Load Buffers
+                    </Button>
+                    {upgradeableBufferRowsLoading ? (
+                      <Stack direction="row" spacing={1} alignItems="center">
+                        <CircularProgress size={16} />
+                        <Typography variant="caption" color="text.secondary">
+                          Loading upgradeable loader buffers...
+                        </Typography>
+                      </Stack>
+                    ) : null}
+                    {!upgradeableBufferRowsLoading &&
+                    upgradeableBufferRows.length === 0 ? (
+                      <Typography variant="caption" color="text.secondary">
+                        No buffers loaded yet. Run Load Buffers.
+                      </Typography>
+                    ) : null}
+                    {upgradeableBufferRows.length > 0 ? (
+                      <Stack spacing={0.7}>
+                        {upgradeableBufferRows.map((row) => (
+                          <Card key={row.address} variant="outlined" sx={{ borderRadius: 1.1 }}>
+                            <CardContent sx={{ p: 1, "&:last-child": { pb: 1 } }}>
+                              <Stack spacing={0.65}>
+                                <Stack
+                                  direction="row"
+                                  justifyContent="space-between"
+                                  alignItems="center"
+                                >
+                                  <Typography
+                                    variant="caption"
+                                    sx={{
+                                      fontFamily: "var(--font-mono), monospace",
+                                      wordBreak: "break-all"
+                                    }}
+                                  >
+                                    {row.address}
+                                  </Typography>
+                                  <Button
+                                    size="small"
+                                    href={explorerAddressUrl(row.address)}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                  >
+                                    Explorer
+                                  </Button>
+                                </Stack>
+                                <Stack direction="row" spacing={0.6} flexWrap="wrap" useFlexGap>
+                                  <Chip size="small" variant="outlined" label={`${row.dataLen} bytes`} />
+                                  <Chip
+                                    size="small"
+                                    variant="outlined"
+                                    label={`${formatLamportsSol(row.lamports)} SOL`}
+                                  />
+                                  <Chip size="small" variant="outlined" label={`${row.lamports} lamports`} />
+                                </Stack>
+                                <Button
+                                  size="small"
+                                  variant="outlined"
+                                  color="warning"
+                                  onClick={() => {
+                                    void closeUpgradeableLoaderBuffer(row.address);
+                                  }}
+                                  disabled={!connected || isSubmitting}
+                                >
+                                  Close Buffer
+                                </Button>
+                              </Stack>
+                            </CardContent>
+                          </Card>
+                        ))}
+                      </Stack>
+                    ) : null}
+                  </Stack>
+                </CardContent>
+              </Card>
+            </AccordionDetails>
+          </Accordion>
+
+          <Accordion
+            expanded={expandedOperation === "bulk-rotation"}
+            onChange={(_event, isExpanded) => {
+              setExpandedOperation(isExpanded ? "bulk-rotation" : false);
+            }}
+            disableGutters
+            sx={{
+              bgcolor: "transparent",
+              border: "1px solid",
+              borderColor: "divider",
+              borderRadius: "8px !important",
+              order: 3
+            }}
+          >
+            <AccordionSummary
+              expandIcon={
+                <Typography color="text.secondary">
                   {expandedOperation === "bulk-rotation" ? "−" : "+"}
                 </Typography>
               }
             >
-              <Typography variant="subtitle2">2. Bulk Authority Rotation Wizard</Typography>
+              <Typography variant="subtitle2">3. Bulk Authority Rotation Wizard</Typography>
             </AccordionSummary>
             <AccordionDetails sx={{ pt: 0.5 }}>
               <Card variant="outlined" sx={{ borderRadius: 1.5 }}>
@@ -5300,7 +5618,8 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
                     </Button>
                     <Typography variant="caption" color="text.secondary">
                       Optional rent reclaim helper. Works only if on-chain program supports
-                      `close_claim_status` (typically after claim window end).
+                      `close_claim_status` (typically after claim window end). Uses the current
+                      claim index field.
                     </Typography>
                     <Button
                       variant="outlined"

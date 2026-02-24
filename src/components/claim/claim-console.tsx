@@ -408,7 +408,8 @@ export function ClaimConsole() {
         eligibleCandidates.map(async (candidate) => {
           const claimStatusPda = distributorClient.findClaimStatusPda(
             candidate.distributor,
-            publicKey
+            publicKey,
+            candidate.index
           )[0];
           const claimStatusAccount = await distributorClient.fetchClaimStatus(
             claimStatusPda

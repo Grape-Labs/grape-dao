@@ -22,6 +22,7 @@ import { useEffect, useMemo, useState } from "react";
 import { DelegateManager } from "@/components/wallet/delegate-manager";
 import { IdentityActions } from "@/components/wallet/identity-actions";
 import { HoldingsPanel } from "@/components/wallet/holdings-panel";
+import { ProgramBuffersManager } from "@/components/wallet/program-buffers-manager";
 import { RentRecoverySweeper } from "@/components/wallet/rent-recovery-sweeper";
 import { StakingConsole } from "@/components/wallet/staking-console";
 import { useRpcEndpoint } from "@/components/providers/solana-wallet-provider";
@@ -268,6 +269,24 @@ export function WalletSection() {
                 </AccordionSummary>
                 <AccordionDetails sx={{ pt: 0.5 }}>
                   <RentRecoverySweeper holdingsState={holdingsState} />
+                </AccordionDetails>
+              </Accordion>
+
+              <Accordion
+                expanded={expandedTool === "program-buffers"}
+                onChange={(_event, isExpanded) => {
+                  setExpandedTool(isExpanded ? "program-buffers" : false);
+                }}
+                disableGutters
+                sx={{ bgcolor: "transparent", border: "1px solid", borderColor: "divider", borderRadius: "8px !important" }}
+              >
+                <AccordionSummary
+                  expandIcon={<Typography color="text.secondary">{expandedTool === "program-buffers" ? "−" : "+"}</Typography>}
+                >
+                  <Typography variant="subtitle2">Program Buffers</Typography>
+                </AccordionSummary>
+                <AccordionDetails sx={{ pt: 0.5 }}>
+                  <ProgramBuffersManager />
                 </AccordionDetails>
               </Accordion>
             </Stack>
