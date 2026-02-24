@@ -1,7 +1,5 @@
 "use client";
 
-import { useWallet } from "@solana/wallet-adapter-react";
-import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import {
   Accordion,
   AccordionDetails,
@@ -10,53 +8,23 @@ import {
   Button,
   Card,
   CardContent,
-  Chip,
-  Divider,
   Grid,
-  MenuItem,
   Stack,
-  TextField,
   Typography
 } from "@mui/material";
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 import { DelegateManager } from "@/components/wallet/delegate-manager";
 import { IdentityActions } from "@/components/wallet/identity-actions";
 import { HoldingsPanel } from "@/components/wallet/holdings-panel";
 import { ProgramBuffersManager } from "@/components/wallet/program-buffers-manager";
 import { RentRecoverySweeper } from "@/components/wallet/rent-recovery-sweeper";
 import { StakingConsole } from "@/components/wallet/staking-console";
-import { useRpcEndpoint } from "@/components/providers/solana-wallet-provider";
+import { WalletConnectControl } from "@/components/wallet/wallet-connect-control";
 import { useWalletHoldings } from "@/hooks/use-wallet-holdings";
 
-function shortenAddress(address: string) {
-  return `${address.slice(0, 6)}...${address.slice(-6)}`;
-}
-
 export function WalletSection() {
-  const { connected, publicKey, disconnect, wallet } = useWallet();
-  const { setVisible } = useWalletModal();
-  const { endpoint, defaultEndpoint, options, setEndpoint, resetEndpoint } =
-    useRpcEndpoint();
   const holdingsState = useWalletHoldings();
-
-  const [selectedRpc, setSelectedRpc] = useState(endpoint);
-  const [customRpc, setCustomRpc] = useState(endpoint);
   const [expandedTool, setExpandedTool] = useState<string | false>("transact");
-  const isUsingShyftDefault = endpoint === defaultEndpoint;
-
-  const walletLabel = publicKey ? shortenAddress(publicKey.toBase58()) : "Connect Identity";
-  const isUsingPresetRpc = useMemo(
-    () => options.some((option) => option.value === endpoint),
-    [endpoint, options]
-  );
-  const canApplyCustomRpc =
-    customRpc.trim().length > 0 && customRpc.trim() !== endpoint;
-
-  useEffect(() => {
-    const preset = options.find((option) => option.value === endpoint);
-    setSelectedRpc(preset ? preset.value : "custom");
-    setCustomRpc(endpoint === defaultEndpoint ? "" : endpoint);
-  }, [defaultEndpoint, endpoint, options]);
 
   return (
     <Card
@@ -96,109 +64,7 @@ export function WalletSection() {
                 </Box>
               </Box>
 
-              <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ sm: "center" }}>
-                <Button
-                  variant="contained"
-                  onClick={() => setVisible(true)}
-                  sx={{ width: { xs: "100%", sm: "auto" }, minWidth: 170 }}
-                >
-                  {walletLabel}
-                </Button>
-                {connected ? (
-                  <Button
-                    variant="outlined"
-                    color="inherit"
-                    onClick={() => {
-                      void disconnect();
-                    }}
-                    sx={{ width: { xs: "100%", sm: "auto" } }}
-                  >
-                    Disconnect
-                  </Button>
-                ) : null}
-                {wallet?.adapter.name ? (
-                  <Chip
-                    variant="outlined"
-                    label={wallet.adapter.name}
-                    sx={{ borderColor: "rgba(190, 214, 205, 0.2)" }}
-                  />
-                ) : null}
-              </Stack>
-
-              <Divider />
-
-              <Stack spacing={1}>
-                <Typography variant="subtitle2" color="text.secondary">
-                  RPC Provider
-                </Typography>
-                <Stack direction={{ xs: "column", md: "row" }} spacing={1}>
-                  <TextField
-                    select
-                    size="small"
-                    label="Provider"
-                    value={selectedRpc}
-                    onChange={(event) => {
-                      const nextValue = event.target.value;
-                      setSelectedRpc(nextValue);
-                      if (nextValue !== "custom") {
-                        setEndpoint(nextValue);
-                      }
-                    }}
-                    sx={{ minWidth: { xs: "100%", md: 240 } }}
-                  >
-                    {options.map((option) => (
-                      <MenuItem key={option.value} value={option.value}>
-                        {option.label}
-                      </MenuItem>
-                    ))}
-                    <MenuItem value="custom">Custom RPC URL</MenuItem>
-                  </TextField>
-                  {selectedRpc === "custom" ? (
-                    <>
-                      <TextField
-                        size="small"
-                        label="Custom RPC URL"
-                        value={customRpc}
-                        onChange={(event) => {
-                          setCustomRpc(event.target.value);
-                        }}
-                        fullWidth
-                      />
-                      <Button
-                        variant="outlined"
-                        onClick={() => {
-                          setEndpoint(customRpc);
-                        }}
-                        disabled={!canApplyCustomRpc}
-                      >
-                        Apply
-                      </Button>
-                    </>
-                  ) : null}
-                  <Button
-                    variant="text"
-                    onClick={resetEndpoint}
-                    disabled={endpoint === defaultEndpoint}
-                    sx={{ whiteSpace: "nowrap" }}
-                  >
-                    Reset
-                  </Button>
-                </Stack>
-                {!isUsingShyftDefault ? (
-                  <Typography
-                    variant="caption"
-                    color="text.secondary"
-                    sx={{
-                      display: "block",
-                      wordBreak: "break-all",
-                      fontFamily: "var(--font-mono), monospace"
-                    }}
-                  >
-                    Active RPC: {endpoint}
-                    {isUsingPresetRpc ? "" : " (custom)"}
-                  </Typography>
-                ) : null}
-              </Stack>
+              <WalletConnectControl connectText="Connect Identity" />
 
               <Accordion
                 expanded={expandedTool === "transact"}

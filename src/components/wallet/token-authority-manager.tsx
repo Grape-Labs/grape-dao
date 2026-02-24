@@ -41,8 +41,10 @@ import {
 } from "@metaplex-foundation/mpl-token-metadata";
 import { publicKey as umiPublicKey } from "@metaplex-foundation/umi";
 import {
+  CLAIM_STATUS_ACCOUNT_SIZE,
   GrapeDistributorClient,
   GRAPE_DISTRIBUTOR_PROGRAM_ID,
+  decodeClaimStatusAccount,
   computeLeaf,
   hashSortedPair,
   verifyMerkleProofSorted
@@ -80,6 +82,12 @@ type DistributorAllocation = {
   wallet: PublicKey;
   amount: bigint;
   index: bigint;
+};
+
+type DistributorAllocationInput = {
+  wallet: PublicKey;
+  amount: bigint;
+  explicitIndex: bigint | null;
 };
 
 type TokenMetadataTemplate = {
@@ -335,7 +343,7 @@ function parseDistributorAllocationsInput(input: string, decimals: number) {
     throw new Error("Add at least one allocation line.");
   }
 
-  const allocations: DistributorAllocation[] = lines.map((line, index) => {
+  const allocations: DistributorAllocationInput[] = lines.map((line, index) => {
     const parts = line.includes(",")
       ? line.split(",").map((value) => value.trim())
       : line.split(/\s+/).map((value) => value.trim());
@@ -353,7 +361,20 @@ function parseDistributorAllocationsInput(input: string, decimals: number) {
       );
     }
 
-    return { wallet, amount, index: BigInt(index) };
+    const explicitIndexInput = (parts[2] || "").trim();
+    const explicitIndex =
+      explicitIndexInput.length > 0
+        ? (() => {
+            if (!/^\d+$/.test(explicitIndexInput)) {
+              throw new Error(
+                `Allocation index must be a non-negative integer on line ${index + 1}.`
+              );
+            }
+            return BigInt(explicitIndexInput);
+          })()
+        : null;
+
+    return { wallet, amount, explicitIndex };
   });
 
   return allocations;
@@ -679,6 +700,9 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
   const [distributorWizardClaimant, setDistributorWizardClaimant] = useState("");
   const [distributorWizardAllocations, setDistributorWizardAllocations] =
     useState("");
+  const [distributorWizardIndexMode, setDistributorWizardIndexMode] = useState<
+    "onchain" | "line"
+  >("onchain");
   const [distributorWizardRealm, setDistributorWizardRealm] = useState("");
   const [
     distributorWizardGovernanceProgramId,
@@ -2152,6 +2176,127 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
     }
   };
 
+  const assignLegacyDistributorAllocationIndices = (
+    allocations: DistributorAllocationInput[]
+  ) => {
+    const seenByWallet = new Map<string, Set<bigint>>();
+    return allocations.map((allocation, index) => {
+      const walletAddress = allocation.wallet.toBase58();
+      const assignedIndex = allocation.explicitIndex ?? BigInt(index);
+      const seen = seenByWallet.get(walletAddress) ?? new Set<bigint>();
+      if (seen.has(assignedIndex)) {
+        throw new Error(
+          `Duplicate index ${assignedIndex.toString()} for wallet ${walletAddress} in this package.`
+        );
+      }
+      seen.add(assignedIndex);
+      seenByWallet.set(walletAddress, seen);
+      return {
+        wallet: allocation.wallet,
+        amount: allocation.amount,
+        index: assignedIndex
+      } satisfies DistributorAllocation;
+    });
+  };
+
+  const loadClaimStatusIndexesByWallet = async (
+    distributor: PublicKey,
+    wallets: PublicKey[]
+  ) => {
+    const uniqueWalletAddresses = Array.from(
+      new Set(wallets.map((wallet) => wallet.toBase58()))
+    );
+    const entries = await Promise.all(
+      uniqueWalletAddresses.map(async (walletAddress) => {
+        const claimant = new PublicKey(walletAddress);
+        const accounts = await connection.getProgramAccounts(distributorClient.programId, {
+          commitment: "confirmed",
+          filters: [
+            { dataSize: CLAIM_STATUS_ACCOUNT_SIZE },
+            { memcmp: { offset: 8, bytes: distributor.toBase58() } },
+            { memcmp: { offset: 8 + 32, bytes: claimant.toBase58() } }
+          ]
+        });
+        const usedIndexes = new Set<bigint>();
+        accounts.forEach((account) => {
+          try {
+            const decoded = decodeClaimStatusAccount(account.account.data);
+            if (
+              decoded.distributor.equals(distributor) &&
+              decoded.claimant.equals(claimant)
+            ) {
+              usedIndexes.add(decoded.index);
+            }
+          } catch {
+            // Ignore non-claim-status accounts in filter result.
+          }
+        });
+        return [walletAddress, usedIndexes] as const;
+      })
+    );
+    return new Map<string, Set<bigint>>(entries);
+  };
+
+  const assignCollisionSafeDistributorAllocationIndices = async (
+    distributor: PublicKey,
+    allocations: DistributorAllocationInput[]
+  ) => {
+    const existingByWallet = await loadClaimStatusIndexesByWallet(
+      distributor,
+      allocations.map((allocation) => allocation.wallet)
+    );
+    const assignedByWallet = new Map<string, Set<bigint>>();
+    const nextCandidateByWallet = new Map<string, bigint>();
+
+    return allocations.map((allocation) => {
+      const walletAddress = allocation.wallet.toBase58();
+      const existing = existingByWallet.get(walletAddress) ?? new Set<bigint>();
+      const assignedInPackage =
+        assignedByWallet.get(walletAddress) ?? new Set<bigint>();
+      if (!assignedByWallet.has(walletAddress)) {
+        assignedByWallet.set(walletAddress, assignedInPackage);
+      }
+
+      const initialNextCandidate =
+        nextCandidateByWallet.get(walletAddress) ??
+        (() => {
+          if (existing.size === 0) {
+            return 0n;
+          }
+          let max = 0n;
+          existing.forEach((value) => {
+            if (value > max) {
+              max = value;
+            }
+          });
+          return max + 1n;
+        })();
+
+      let indexToUse: bigint;
+      if (allocation.explicitIndex !== null) {
+        indexToUse = allocation.explicitIndex;
+        if (existing.has(indexToUse) || assignedInPackage.has(indexToUse)) {
+          throw new Error(
+            `Allocation index collision for wallet ${walletAddress}: ${indexToUse.toString()} already used.`
+          );
+        }
+      } else {
+        indexToUse = initialNextCandidate;
+        while (existing.has(indexToUse) || assignedInPackage.has(indexToUse)) {
+          indexToUse += 1n;
+        }
+      }
+
+      assignedInPackage.add(indexToUse);
+      nextCandidateByWallet.set(walletAddress, indexToUse + 1n);
+      return {
+        wallet: allocation.wallet,
+        amount: allocation.amount,
+        index: indexToUse
+      } satisfies DistributorAllocation;
+    });
+  };
+
   const generateDistributorWizardRootAndClaimPackage = async () => {
     setStatus(null);
     try {
@@ -2189,10 +2334,17 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
       );
       const mintState = await getMint(connection, mint, "confirmed", TOKEN_PROGRAM_ID);
 
-      const allocations = parseDistributorAllocationsInput(
+      const allocationInputs = parseDistributorAllocationsInput(
         distributorWizardAllocations,
         mintState.decimals
       );
+      const allocations =
+        distributorWizardIndexMode === "onchain"
+          ? await assignCollisionSafeDistributorAllocationIndices(
+              distributor,
+              allocationInputs
+            )
+          : assignLegacyDistributorAllocationIndices(allocationInputs);
       const leaves = allocations.map((allocation) =>
         computeLeaf(distributor, allocation.wallet, allocation.index, allocation.amount)
       );
@@ -2286,11 +2438,11 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
         severity: "success",
         message: claimantLoaded
           ? usedFallbackClaimant
-            ? `Generated root + claim manifest (${allocations.length} allocation(s)); loaded wallet claim for ${shortenAddress(claimantAddress)}. Amounts parsed with mint decimals (${mintState.decimals}).`
-            : `Generated root + claim manifest (${allocations.length} allocation(s)) and loaded claimant package. Amounts parsed with mint decimals (${mintState.decimals}).`
+            ? `Generated root + claim manifest (${allocations.length} allocation(s)); loaded wallet claim for ${shortenAddress(claimantAddress)}. Amounts parsed with mint decimals (${mintState.decimals}). Index mode: ${distributorWizardIndexMode === "onchain" ? "on-chain safe" : "line order"}.`
+            : `Generated root + claim manifest (${allocations.length} allocation(s)) and loaded claimant package. Amounts parsed with mint decimals (${mintState.decimals}). Index mode: ${distributorWizardIndexMode === "onchain" ? "on-chain safe" : "line order"}.`
           : configuredClaimantAddress
-            ? `Generated root + claim manifest (${allocations.length} allocation(s)), but claimant wallet is not present in allocations. Amounts parsed with mint decimals (${mintState.decimals}).`
-            : `Generated root + claim manifest (${allocations.length} allocation(s)). Amounts parsed with mint decimals (${mintState.decimals}). Set claimant wallet to auto-load one entry for testing.`
+            ? `Generated root + claim manifest (${allocations.length} allocation(s)), but claimant wallet is not present in allocations. Amounts parsed with mint decimals (${mintState.decimals}). Index mode: ${distributorWizardIndexMode === "onchain" ? "on-chain safe" : "line order"}.`
+            : `Generated root + claim manifest (${allocations.length} allocation(s)). Amounts parsed with mint decimals (${mintState.decimals}). Set claimant wallet to auto-load one entry for testing. Index mode: ${distributorWizardIndexMode === "onchain" ? "on-chain safe" : "line order"}.`
       });
     } catch (unknownError) {
       setStatus({
@@ -2916,6 +3068,24 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
       let resolvedDistributor = distributorOverride ?? distributorClient.findDistributorPda(mint)[0];
       let claimStatus: PublicKey | undefined;
       let tokenOwnerRecord: PublicKey | undefined;
+      const existingClaimStatusPda = distributorClient.findClaimStatusPda(
+        resolvedDistributor,
+        publicKey,
+        index
+      )[0];
+      const existingClaimStatus = await distributorClient.fetchClaimStatus(
+        existingClaimStatusPda
+      );
+      if (existingClaimStatus) {
+        const statusLabel = existingClaimStatus.claimed
+          ? "already claimed"
+          : "already initialized";
+        throw new Error(
+          `Claim status already exists for index ${index.toString()} (${statusLabel}). ` +
+          `PDA: ${existingClaimStatusPda.toBase58()}. ` +
+          "Use a new index/manifest, or close claim status for this exact index if allowed."
+        );
+      }
 
       if (realmInput) {
         const governanceBuild =
@@ -5067,7 +5237,26 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
                       Wizard: Mint → Vault → Root → Claim Package
                     </Typography>
                     <Typography variant="caption" color="text.secondary">
-                      One line per allocation: wallet,amount (token units, converted by mint decimals)
+                      One line per allocation: `wallet,amount` or `wallet,amount,index` (token units converted by mint decimals).
+                    </Typography>
+                    <TextField
+                      select
+                      size="small"
+                      label="Index Strategy"
+                      value={distributorWizardIndexMode}
+                      onChange={(event) => {
+                        setDistributorWizardIndexMode(
+                          event.target.value as "onchain" | "line"
+                        );
+                      }}
+                    >
+                      <MenuItem value="onchain">
+                        On-chain Safe (recommended)
+                      </MenuItem>
+                      <MenuItem value="line">Line Order (legacy)</MenuItem>
+                    </TextField>
+                    <Typography variant="caption" color="text.secondary">
+                      On-chain safe mode auto-selects the next unused index per wallet for this distributor to prevent claim-status collisions.
                     </Typography>
                     <TextField
                       size="small"
@@ -5126,7 +5315,7 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
                       onChange={(event) => {
                         setDistributorWizardAllocations(event.target.value);
                       }}
-                      placeholder={`WalletAddress1,1\nWalletAddress2,2.5`}
+                      placeholder={`WalletAddress1,1\nWalletAddress2,2.5\nWalletAddress3,3,42`}
                     />
                     <Stack direction={{ xs: "column", md: "row" }} spacing={1}>
                       <Button
