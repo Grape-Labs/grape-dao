@@ -36,7 +36,7 @@ export default function NotFound() {
           <Stack spacing={2}>
             <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" gap={1.2}>
               <Typography variant="overline" color="primary.light">
-                Grape Hub | grape.art
+                Grape Hub | grapedao.org
               </Typography>
               <Chip variant="outlined" color="secondary" label="Route Not Found" />
             </Stack>

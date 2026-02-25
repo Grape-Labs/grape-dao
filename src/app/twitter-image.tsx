@@ -34,7 +34,7 @@ export default function TwitterImage() {
             color: "#9dffd7"
           }}
         >
-          grape.art
+          grapedao.org
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: "18px", maxWidth: "980px" }}>
           <div style={{ fontSize: 76, fontWeight: 700, lineHeight: 1.04 }}>

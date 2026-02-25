@@ -35,7 +35,7 @@ export default function OpengraphImage() {
             color: "#9dffd7"
           }}
         >
-          Grape Hub | grape.art
+          Grape Hub | grapedao.org
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: "18px", maxWidth: "920px" }}>
           <div style={{ fontSize: 74, fontWeight: 700, lineHeight: 1.04 }}>
