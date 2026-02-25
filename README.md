@@ -1,6 +1,6 @@
 # Grape Hub UI
 
-Frontend for `grape.art` built with Next.js + Material UI.  
+Frontend for `grapedao.org` & `grape.art` built with Next.js + Material UI.  
 This UI combines a product landing experience with dedicated operational pages for Identity and Token Tools.
 
 ## Stack

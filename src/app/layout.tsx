@@ -17,13 +17,13 @@ const monoFont = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://grape.art"),
+  metadataBase: new URL("https://grapedao.org"),
   title: {
     default: "Grape Hub",
     template: "%s | Grape Hub"
   },
   description:
-    "Grape Hub at grape.art: Solana products across reputation, verification, access, governance, and wallet connectivity.",
+    "Grape Hub at grapedao.org: Solana products across reputation, verification, access, governance, and wallet connectivity.",
   alternates: {
     canonical: "/"
   },
@@ -41,8 +41,8 @@ export const metadata: Metadata = {
   openGraph: {
     type: "website",
     siteName: "Grape Hub",
-    url: "https://grape.art",
-    title: "Grape Hub | grape.art",
+    url: "https://grapedao.org",
+    title: "Grape Hub | grapedao.org",
     description:
       "Mainnet-ready identity, reputation, access, and governance primitives for communities on Solana.",
     images: [
@@ -56,7 +56,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Grape Hub | grape.art",
+    title: "Grape Hub | grapedao.org",
     description:
       "Identity, reputation, access, and governance primitives for communities on Solana.",
     images: ["/twitter-image"]

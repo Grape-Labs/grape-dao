@@ -144,7 +144,7 @@ export default function Home() {
                   alignItems={{ md: "center" }}
                 >
                   <Typography variant="overline" color="primary.light">
-                    Grape Hub | grape.art
+                    Grape Hub | grapedao.org
                   </Typography>
                   <RotatingTagline
                     lines={heroTaglines}

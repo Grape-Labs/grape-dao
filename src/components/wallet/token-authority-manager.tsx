@@ -619,7 +619,7 @@ function buildTokenMetadataTemplate(
     symbol,
     description: "Token metadata for Grape ecosystem.",
     image: imageUri,
-    external_url: "https://grape.art",
+    external_url: "https://grapedao.org",
     attributes: [],
     properties: {
       category: "image",
@@ -816,7 +816,7 @@ export function TokenAuthorityManager({ holdingsState }: TokenAuthorityManagerPr
       return "";
     }
     const origin =
-      typeof window !== "undefined" ? window.location.origin : "https://grape.art";
+      typeof window !== "undefined" ? window.location.origin : "https://grapedao.org";
     return `${origin}/claims?manifest=${encodeURIComponent(distributorClaimManifestUrl)}`;
   }, [distributorClaimManifestUrl]);
 
