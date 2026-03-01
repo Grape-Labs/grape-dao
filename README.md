@@ -141,6 +141,33 @@ npm run lint
 npm run build
 ```
 
+## Power API + CLI Mode
+
+For repeatable operator workflows, the app exposes local API endpoints and a CLI wrapper.
+
+### API Endpoints
+
+- `GET /api/power/holdings?owner=<PUBKEY>&rpcEndpoint=<optional>`
+- `POST /api/power/revoke-plan`
+  - body: `{ "owner": "...", "rpcEndpoint": "...", "maxInstructionsPerTx": 8 }`
+- `POST /api/power/sweep-plan`
+  - body: `{ "owner": "...", "safeWallet": "...", "reserveSol": "0.02", "rpcEndpoint": "...", "maxInstructionsPerTx": 6 }`
+
+All plan endpoints return serialized instruction batches so power users can script/inspect flows before signing.
+
+### CLI Wrapper
+
+```bash
+# wallet snapshot
+npm run power:cli -- holdings --owner <PUBKEY>
+
+# delegate revoke plan
+npm run power:cli -- revoke-plan --owner <PUBKEY> --batch-size 8
+
+# incident sweep plan
+npm run power:cli -- sweep-plan --owner <PUBKEY> --safe-wallet <PUBKEY> --reserve-sol 0.02
+```
+
 ## Environment
 
 - Optional:
