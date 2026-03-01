@@ -4,7 +4,10 @@ import { useEffect, useMemo, useState } from "react";
 import { useConnection } from "@solana/wallet-adapter-react";
 import type { ParsedAccountData } from "@solana/web3.js";
 import { PublicKey } from "@solana/web3.js";
-import { MPL_TOKEN_METADATA_PROGRAM_ID } from "@metaplex-foundation/mpl-token-metadata";
+import {
+  MPL_TOKEN_METADATA_PROGRAM_ID,
+  getMetadataAccountDataSerializer
+} from "@metaplex-foundation/mpl-token-metadata";
 import {
   Alert,
   Box,
@@ -38,6 +41,7 @@ import {
 const TOKEN_METADATA_PROGRAM_ID = new PublicKey(MPL_TOKEN_METADATA_PROGRAM_ID);
 const METADATA_SEED = new TextEncoder().encode("metadata");
 const IDENTITY_MEDIA_PREF_STORAGE_KEY = "grapehub.identity.media.enabled";
+const IDENTITY_MEDIA_PREF_EVENT = "grapehub:identity-media-preference";
 
 function shortenAddress(address: string) {
   return `${address.slice(0, 6)}...${address.slice(-6)}`;
@@ -64,6 +68,7 @@ type MetadataJsonAttribute = {
 type MetaplexMetadata = {
   metadataPda: string;
   updateAuthority: string;
+  verifiedCollectionAddress: string | null;
   name: string;
   symbol: string;
   uri: string;
@@ -243,6 +248,64 @@ function parseMetadataAttributes(value: unknown): MetadataJsonAttribute[] {
     .filter((entry): entry is MetadataJsonAttribute => Boolean(entry));
 }
 
+function parsePublicKeyLike(value: unknown): string | null {
+  if (!value) {
+    return null;
+  }
+  if (typeof value === "string") {
+    try {
+      return new PublicKey(value).toBase58();
+    } catch {
+      return null;
+    }
+  }
+  if (value instanceof Uint8Array || (Array.isArray(value) && value.length === 32)) {
+    try {
+      return new PublicKey(value as Uint8Array).toBase58();
+    } catch {
+      return null;
+    }
+  }
+  if (typeof value === "object") {
+    const maybeObject = value as Record<string, unknown>;
+    const directFields = ["key", "address", "mint", "pubkey", "collectionAddress"];
+    for (const field of directFields) {
+      const parsed = parsePublicKeyLike(maybeObject[field]);
+      if (parsed) {
+        return parsed;
+      }
+    }
+    const optionFields = ["value", "some"];
+    for (const field of optionFields) {
+      const parsed = parsePublicKeyLike(maybeObject[field]);
+      if (parsed) {
+        return parsed;
+      }
+    }
+  }
+  return null;
+}
+
+function extractVerifiedCollectionAddress(collection: unknown): string | null {
+  if (!collection || typeof collection !== "object") {
+    return null;
+  }
+  const objectCollection = collection as Record<string, unknown>;
+
+  if (objectCollection.verified === true) {
+    return parsePublicKeyLike(objectCollection.key);
+  }
+
+  if ("value" in objectCollection) {
+    return extractVerifiedCollectionAddress(objectCollection.value);
+  }
+  if ("some" in objectCollection) {
+    return extractVerifiedCollectionAddress(objectCollection.some);
+  }
+
+  return null;
+}
+
 export function HoldingsPanel({ holdingsState }: HoldingsPanelProps) {
   const { connection } = useConnection();
   const { shyftApiKey } = useRpcEndpoint();
@@ -272,6 +335,15 @@ export function HoldingsPanel({ holdingsState }: HoldingsPanelProps) {
   const [shyftError, setShyftError] = useState<string | null>(null);
   const [shyftLoading, setShyftLoading] = useState(false);
   const [isMediaEnabled, setIsMediaEnabled] = useState(false);
+  const selectedNftMintAddress = useMemo(
+    () =>
+      selectedShyftNft?.mint ||
+      selectedShyftNft?.mint_address ||
+      selectedShyftNft?.address ||
+      null,
+    [selectedShyftNft]
+  );
+  const selectedMintAddressForDetails = selectedToken?.mint || selectedNftMintAddress;
   const selectedTokenMetadata = selectedToken
     ? getTokenMetadata(selectedToken.mint)
     : null;
@@ -365,13 +437,14 @@ export function HoldingsPanel({ holdingsState }: HoldingsPanelProps) {
       IDENTITY_MEDIA_PREF_STORAGE_KEY,
       isMediaEnabled ? "true" : "false"
     );
+    window.dispatchEvent(new CustomEvent(IDENTITY_MEDIA_PREF_EVENT));
   }, [isMediaEnabled]);
 
   useEffect(() => {
     let cancelled = false;
 
     async function loadSelectedMintDetails() {
-      if (!selectedToken) {
+      if (!selectedMintAddressForDetails) {
         setMintDetails(null);
         setDetailsError(null);
         setMetaplexMetadata(null);
@@ -384,7 +457,17 @@ export function HoldingsPanel({ holdingsState }: HoldingsPanelProps) {
       setDetailsError(null);
       setMetaplexMetadata(null);
       setMetaplexError(null);
-      const mintPublicKey = new PublicKey(selectedToken.mint);
+      let mintPublicKey: PublicKey;
+      try {
+        mintPublicKey = new PublicKey(selectedMintAddressForDetails);
+      } catch {
+        setMintDetails(null);
+        setDetailsError("Invalid mint address for selected asset.");
+        setMetaplexMetadata(null);
+        setMetaplexError(null);
+        setDetailsLoading(false);
+        return;
+      }
 
       try {
         const mintInfoResponse = await connection.getParsedAccountInfo(
@@ -416,7 +499,7 @@ export function HoldingsPanel({ holdingsState }: HoldingsPanelProps) {
         const decimals =
           typeof parsedInfo.decimals === "number"
             ? parsedInfo.decimals
-            : selectedToken.decimals;
+            : selectedToken?.decimals ?? 0;
         const supplyRaw = parsedInfo.supply ?? "0";
 
         if (cancelled) {
@@ -457,6 +540,17 @@ export function HoldingsPanel({ holdingsState }: HoldingsPanelProps) {
         } else {
           const parsedMetadata = parseMetadataAccountData(metadataAccountInfo.data);
           const resolvedMetadataUri = resolveMetadataUri(parsedMetadata.uri);
+          let verifiedCollectionAddress: string | null = null;
+          try {
+            const [decodedMetadata] = getMetadataAccountDataSerializer().deserialize(
+              metadataAccountInfo.data
+            );
+            verifiedCollectionAddress = extractVerifiedCollectionAddress(
+              decodedMetadata.collection
+            );
+          } catch {
+            verifiedCollectionAddress = null;
+          }
 
           let jsonName: string | null = null;
           let jsonSymbol: string | null = null;
@@ -511,6 +605,7 @@ export function HoldingsPanel({ holdingsState }: HoldingsPanelProps) {
             setMetaplexMetadata({
               metadataPda: metadataPda.toBase58(),
               updateAuthority: parsedMetadata.updateAuthority,
+              verifiedCollectionAddress,
               name: parsedMetadata.name,
               symbol: parsedMetadata.symbol,
               uri: resolvedMetadataUri,
@@ -546,7 +641,7 @@ export function HoldingsPanel({ holdingsState }: HoldingsPanelProps) {
     return () => {
       cancelled = true;
     };
-  }, [connection, selectedToken]);
+  }, [connection, selectedMintAddressForDetails, selectedToken?.decimals]);
 
   useEffect(() => {
     let cancelled = false;
@@ -735,6 +830,10 @@ export function HoldingsPanel({ holdingsState }: HoldingsPanelProps) {
                           </Typography>
                           {displayNfts.slice(0, 20).map((nft, index) => {
                             const mint = nft.mint || nft.mint_address || nft.address || "";
+                            const nftImageProxyUrl = buildTokenImageProxyUrl(
+                              nft.image_uri || nft.image || "",
+                              isMediaEnabled
+                            );
                             return (
                               <Card
                                 key={`${mint}:${index}`}
@@ -762,22 +861,55 @@ export function HoldingsPanel({ holdingsState }: HoldingsPanelProps) {
                                     gap: 1
                                   }}
                                 >
-                                  <Box>
-                                    <Typography variant="body2">
-                                      {nft.name || shortenAddress(mint || `nft-${index}`)}
-                                    </Typography>
-                                    <Typography variant="caption" color="text.secondary">
-                                      Mint: {mint ? shortenAddress(mint) : "Unknown"}
-                                    </Typography>
-                                    <Typography
-                                      variant="caption"
-                                      color="primary.light"
-                                      display="block"
-                                      sx={{ mt: 0.3 }}
+                                  <Stack
+                                    direction="row"
+                                    spacing={1}
+                                    alignItems="center"
+                                    sx={{ minWidth: 0, flex: 1 }}
+                                  >
+                                    <Box
+                                      sx={{
+                                        width: 36,
+                                        height: 36,
+                                        borderRadius: 0.9,
+                                        border: "1px solid",
+                                        borderColor: "divider",
+                                        backgroundColor: "action.hover",
+                                        overflow: "hidden",
+                                        flexShrink: 0
+                                      }}
                                     >
-                                      Click for NFT details
-                                    </Typography>
-                                  </Box>
+                                      {nftImageProxyUrl ? (
+                                        <Box
+                                          component="img"
+                                          src={nftImageProxyUrl}
+                                          alt={nft.name || "NFT image"}
+                                          sx={{
+                                            width: "100%",
+                                            height: "100%",
+                                            objectFit: "cover",
+                                            display: "block"
+                                          }}
+                                        />
+                                      ) : null}
+                                    </Box>
+                                    <Box sx={{ minWidth: 0 }}>
+                                      <Typography variant="body2">
+                                        {nft.name || shortenAddress(mint || `nft-${index}`)}
+                                      </Typography>
+                                      <Typography variant="caption" color="text.secondary">
+                                        Mint: {mint ? shortenAddress(mint) : "Unknown"}
+                                      </Typography>
+                                      <Typography
+                                        variant="caption"
+                                        color="primary.light"
+                                        display="block"
+                                        sx={{ mt: 0.3 }}
+                                      >
+                                        Click for NFT details
+                                      </Typography>
+                                    </Box>
+                                  </Stack>
                                   <Chip size="small" variant="outlined" label="NFT" />
                                 </CardContent>
                               </Card>
@@ -795,6 +927,10 @@ export function HoldingsPanel({ holdingsState }: HoldingsPanelProps) {
                           </Typography>
                           {potentialNfts.slice(0, 20).map((token) => {
                             const tokenMetadata = getTokenMetadata(token.mint);
+                            const nftCandidateImageProxyUrl = buildTokenImageProxyUrl(
+                              tokenMetadata?.logoURI || "",
+                              isMediaEnabled
+                            );
                             return (
                               <Card
                                 key={token.account}
@@ -822,24 +958,57 @@ export function HoldingsPanel({ holdingsState }: HoldingsPanelProps) {
                                     gap: 1
                                   }}
                                 >
-                                  <Box>
-                                    <Typography variant="body2">
-                                      {tokenMetadata?.name ||
-                                        tokenMetadata?.symbol ||
-                                        shortenAddress(token.mint)}
-                                    </Typography>
-                                    <Typography variant="caption" color="text.secondary">
-                                      Mint: {shortenAddress(token.mint)}
-                                    </Typography>
-                                    <Typography
-                                      variant="caption"
-                                      color="primary.light"
-                                      display="block"
-                                      sx={{ mt: 0.3 }}
+                                  <Stack
+                                    direction="row"
+                                    spacing={1}
+                                    alignItems="center"
+                                    sx={{ minWidth: 0, flex: 1 }}
+                                  >
+                                    <Box
+                                      sx={{
+                                        width: 36,
+                                        height: 36,
+                                        borderRadius: 0.9,
+                                        border: "1px solid",
+                                        borderColor: "divider",
+                                        backgroundColor: "action.hover",
+                                        overflow: "hidden",
+                                        flexShrink: 0
+                                      }}
                                     >
-                                      Click for NFT details
-                                    </Typography>
-                                  </Box>
+                                      {nftCandidateImageProxyUrl ? (
+                                        <Box
+                                          component="img"
+                                          src={nftCandidateImageProxyUrl}
+                                          alt={tokenMetadata?.symbol || "NFT image"}
+                                          sx={{
+                                            width: "100%",
+                                            height: "100%",
+                                            objectFit: "cover",
+                                            display: "block"
+                                          }}
+                                        />
+                                      ) : null}
+                                    </Box>
+                                    <Box sx={{ minWidth: 0 }}>
+                                      <Typography variant="body2">
+                                        {tokenMetadata?.name ||
+                                          tokenMetadata?.symbol ||
+                                          shortenAddress(token.mint)}
+                                      </Typography>
+                                      <Typography variant="caption" color="text.secondary">
+                                        Mint: {shortenAddress(token.mint)}
+                                      </Typography>
+                                      <Typography
+                                        variant="caption"
+                                        color="primary.light"
+                                        display="block"
+                                        sx={{ mt: 0.3 }}
+                                      >
+                                        Click for NFT details
+                                      </Typography>
+                                    </Box>
+                                  </Stack>
                                   <Chip size="small" variant="outlined" label="NFT Candidate" />
                                 </CardContent>
                               </Card>
@@ -856,6 +1025,10 @@ export function HoldingsPanel({ holdingsState }: HoldingsPanelProps) {
                     fungibleTokens.slice(0, 20).map((token) => {
                       const tokenMetadata = getTokenMetadata(token.mint);
                       const shyftTokenMetadata = shyftTokenMetadataByMint.get(token.mint);
+                      const tokenImageProxyUrl = buildTokenImageProxyUrl(
+                        tokenMetadata?.logoURI || shyftTokenMetadata?.image || "",
+                        isMediaEnabled
+                      );
                       return (
                         <Card
                           key={token.account}
@@ -883,29 +1056,66 @@ export function HoldingsPanel({ holdingsState }: HoldingsPanelProps) {
                               gap: 1
                             }}
                           >
-                            <Box>
-                              <Typography variant="body2">
-                                {tokenMetadata?.symbol ||
-                                  shyftTokenMetadata?.symbol ||
-                                  shortenAddress(token.mint)}
-                              </Typography>
-                              <Typography variant="caption" color="text.secondary">
-                                {tokenMetadata?.name
-                                  ? `${tokenMetadata.name} | `
-                                  : shyftTokenMetadata?.name
-                                    ? `${shyftTokenMetadata.name} | `
-                                    : ""}
-                                ATA: {shortenAddress(token.account)}
-                              </Typography>
-                              <Typography
-                                variant="caption"
-                                color="primary.light"
-                                display="block"
-                                sx={{ mt: 0.3 }}
+                            <Stack
+                              direction="row"
+                              spacing={1}
+                              alignItems="center"
+                              sx={{ minWidth: 0, flex: 1 }}
+                            >
+                              <Box
+                                sx={{
+                                  width: 32,
+                                  height: 32,
+                                  borderRadius: 0.8,
+                                  border: "1px solid",
+                                  borderColor: "divider",
+                                  backgroundColor: "action.hover",
+                                  overflow: "hidden",
+                                  flexShrink: 0
+                                }}
                               >
-                                Click for details
-                              </Typography>
-                            </Box>
+                                {tokenImageProxyUrl ? (
+                                  <Box
+                                    component="img"
+                                    src={tokenImageProxyUrl}
+                                    alt={
+                                      tokenMetadata?.symbol ||
+                                      shyftTokenMetadata?.symbol ||
+                                      "Token"
+                                    }
+                                    sx={{
+                                      width: "100%",
+                                      height: "100%",
+                                      objectFit: "cover",
+                                      display: "block"
+                                    }}
+                                  />
+                                ) : null}
+                              </Box>
+                              <Box sx={{ minWidth: 0 }}>
+                                <Typography variant="body2">
+                                  {tokenMetadata?.symbol ||
+                                    shyftTokenMetadata?.symbol ||
+                                    shortenAddress(token.mint)}
+                                </Typography>
+                                <Typography variant="caption" color="text.secondary">
+                                  {tokenMetadata?.name
+                                    ? `${tokenMetadata.name} | `
+                                    : shyftTokenMetadata?.name
+                                      ? `${shyftTokenMetadata.name} | `
+                                      : ""}
+                                  ATA: {shortenAddress(token.account)}
+                                </Typography>
+                                <Typography
+                                  variant="caption"
+                                  color="primary.light"
+                                  display="block"
+                                  sx={{ mt: 0.3 }}
+                                >
+                                  Click for details
+                                </Typography>
+                              </Box>
+                            </Stack>
                             <Typography
                               sx={{ fontFamily: "var(--font-mono), monospace", fontWeight: 500 }}
                             >
@@ -955,6 +1165,50 @@ export function HoldingsPanel({ holdingsState }: HoldingsPanelProps) {
               </Typography>
               <Typography variant="body2" color="text.secondary">
                 {selectedShyftNft.symbol || "NFT"}
+              </Typography>
+              {detailsLoading ? (
+                <Typography variant="body2" color="text.secondary">
+                  Loading on-chain NFT details...
+                </Typography>
+              ) : null}
+              {detailsError ? (
+                <Alert severity="warning">{detailsError}</Alert>
+              ) : null}
+              <Typography variant="caption" color="text.secondary">
+                Verified Collection Address
+              </Typography>
+              <Typography
+                variant="body2"
+                sx={{ wordBreak: "break-all", fontFamily: "var(--font-mono), monospace" }}
+              >
+                {metaplexMetadata?.verifiedCollectionAddress ?? "Unverified / Not set"}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                Freeze Authority
+              </Typography>
+              <Typography
+                variant="body2"
+                sx={{ wordBreak: "break-all", fontFamily: "var(--font-mono), monospace" }}
+              >
+                {mintDetails?.freezeAuthority ?? "None"}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                Mint Authority
+              </Typography>
+              <Typography
+                variant="body2"
+                sx={{ wordBreak: "break-all", fontFamily: "var(--font-mono), monospace" }}
+              >
+                {mintDetails?.mintAuthority ?? "None"}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                Update Authority
+              </Typography>
+              <Typography
+                variant="body2"
+                sx={{ wordBreak: "break-all", fontFamily: "var(--font-mono), monospace" }}
+              >
+                {metaplexMetadata?.updateAuthority ?? "Unknown"}
               </Typography>
               <Typography
                 variant="body2"

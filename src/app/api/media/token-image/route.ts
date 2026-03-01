@@ -1,4 +1,3 @@
-import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import { Buffer } from "node:buffer";
 import { NextResponse } from "next/server";
@@ -62,7 +61,7 @@ function isPrivateIpAddress(address: string) {
   return true;
 }
 
-async function assertSafeRemoteHost(hostname: string) {
+function assertSafeRemoteHost(hostname: string) {
   const normalized = hostname.trim().toLowerCase();
   if (!normalized) {
     throw new Error("Missing host.");
@@ -79,15 +78,6 @@ async function assertSafeRemoteHost(hostname: string) {
     if (isPrivateIpAddress(normalized)) {
       throw new Error("Private IP targets are not allowed.");
     }
-    return;
-  }
-
-  const resolved = await lookup(normalized, { all: true, verbatim: true });
-  if (resolved.length === 0) {
-    throw new Error("Unable to resolve host.");
-  }
-  if (resolved.some((entry) => isPrivateIpAddress(entry.address))) {
-    throw new Error("Resolved host points to a private IP.");
   }
 }
 
@@ -143,7 +133,7 @@ export async function GET(request: Request) {
       );
     }
 
-    await assertSafeRemoteHost(targetUrl.hostname);
+    assertSafeRemoteHost(targetUrl.hostname);
 
     const abortController = new AbortController();
     const timeout = setTimeout(() => {
@@ -158,7 +148,8 @@ export async function GET(request: Request) {
         cache: "force-cache",
         signal: abortController.signal,
         headers: {
-          Accept: "image/*"
+          Accept: "image/*",
+          "User-Agent": "GrapeHubImageProxy/1.0"
         }
       });
     } finally {

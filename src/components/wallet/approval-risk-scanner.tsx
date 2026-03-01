@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import {
+  TOKEN_2022_PROGRAM_ID,
   TOKEN_PROGRAM_ID,
   createRevokeInstruction
 } from "@solana/spl-token";
@@ -57,6 +58,13 @@ function chunkInstructions(
     chunks.push(instructions.slice(index, index + chunkSize));
   }
   return chunks;
+}
+
+function getTokenProgramIdForAccount(account: TokenHolding) {
+  if (account.tokenProgramId === TOKEN_2022_PROGRAM_ID.toBase58()) {
+    return TOKEN_2022_PROGRAM_ID;
+  }
+  return TOKEN_PROGRAM_ID;
 }
 
 function computeRiskRow(account: TokenHolding, ownerAddress: string | null): RiskRow | null {
@@ -256,7 +264,7 @@ export function ApprovalRiskScanner({ holdingsState }: ApprovalRiskScannerProps)
       new PublicKey(account.account),
       publicKey,
       [],
-      TOKEN_PROGRAM_ID
+      getTokenProgramIdForAccount(account)
     );
     void submitRevokeInstructions([instruction], "Delegate approval revoked.");
   }
@@ -281,7 +289,7 @@ export function ApprovalRiskScanner({ holdingsState }: ApprovalRiskScannerProps)
         new PublicKey(row.account.account),
         publicKey,
         [],
-        TOKEN_PROGRAM_ID
+        getTokenProgramIdForAccount(row.account)
       )
     );
     void submitRevokeInstructions(

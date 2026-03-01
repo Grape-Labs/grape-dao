@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import {
+  TOKEN_2022_PROGRAM_ID,
   TOKEN_PROGRAM_ID,
   createRevokeInstruction
 } from "@solana/spl-token";
@@ -48,6 +49,13 @@ function chunkInstructions(
     chunks.push(instructions.slice(index, index + chunkSize));
   }
   return chunks;
+}
+
+function getTokenProgramIdForAccount(account: TokenHolding) {
+  if (account.tokenProgramId === TOKEN_2022_PROGRAM_ID.toBase58()) {
+    return TOKEN_2022_PROGRAM_ID;
+  }
+  return TOKEN_PROGRAM_ID;
 }
 
 export function DelegateManager({ holdingsState }: DelegateManagerProps) {
@@ -169,7 +177,7 @@ export function DelegateManager({ holdingsState }: DelegateManagerProps) {
       new PublicKey(account.account),
       publicKey,
       [],
-      TOKEN_PROGRAM_ID
+      getTokenProgramIdForAccount(account)
     );
 
     await submitBatchedInstructions([instruction], "Delegate revoked.");
@@ -185,7 +193,7 @@ export function DelegateManager({ holdingsState }: DelegateManagerProps) {
         new PublicKey(account.account),
         publicKey,
         [],
-        TOKEN_PROGRAM_ID
+        getTokenProgramIdForAccount(account)
       )
     );
 

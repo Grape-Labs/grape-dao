@@ -28,6 +28,10 @@ export const metadata: Metadata = {
 };
 
 export default function IdentityPage() {
+  const enableJupiterSwapRouter = Boolean(
+    process.env.NEXT_JUP_API_KEY && process.env.NEXT_JUP_API_KEY.trim().length > 0
+  );
+
   return (
     <Container maxWidth="xl" sx={{ py: { xs: 2.5, md: 5 } }}>
       <Card
@@ -102,7 +106,7 @@ export default function IdentityPage() {
       </Card>
 
       <Box mt={3}>
-        <WalletSection />
+        <WalletSection enableJupiterSwapRouter={enableJupiterSwapRouter} />
       </Box>
     </Container>
   );

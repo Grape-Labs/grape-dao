@@ -16,7 +16,9 @@ import {
 } from "@mui/material";
 import { useMemo, useState } from "react";
 import { ApprovalRiskScanner } from "@/components/wallet/approval-risk-scanner";
+import { DelegateExplorer } from "@/components/wallet/delegate-explorer";
 import { IdentityActions } from "@/components/wallet/identity-actions";
+import { JupiterSwapRouter } from "@/components/wallet/jupiter-swap-router";
 import { HoldingsPanel } from "@/components/wallet/holdings-panel";
 import { IncidentResponseMode } from "@/components/wallet/incident-response-mode";
 import { ProgramBuffersManager } from "@/components/wallet/program-buffers-manager";
@@ -28,7 +30,13 @@ import { useRpcEndpoint } from "@/components/providers/solana-wallet-provider";
 import { WalletConnectControl } from "@/components/wallet/wallet-connect-control";
 import { useWalletHoldings } from "@/hooks/use-wallet-holdings";
 
-export function WalletSection() {
+type WalletSectionProps = {
+  enableJupiterSwapRouter?: boolean;
+};
+
+export function WalletSection({
+  enableJupiterSwapRouter = false
+}: WalletSectionProps) {
   const holdingsState = useWalletHoldings();
   const { securityPolicy } = useRpcEndpoint();
   const [expandedTool, setExpandedTool] = useState<string | false>("transact");
@@ -298,6 +306,26 @@ export function WalletSection() {
                 </AccordionDetails>
               </Accordion>
 
+              {enableJupiterSwapRouter ? (
+                <Accordion
+                  expanded={expandedTool === "swap-router"}
+                  onChange={(_event, isExpanded) => {
+                    setExpandedTool(isExpanded ? "swap-router" : false);
+                  }}
+                  disableGutters
+                  sx={{ bgcolor: "transparent", border: "1px solid", borderColor: "divider", borderRadius: "8px !important" }}
+                >
+                  <AccordionSummary
+                    expandIcon={<Typography color="text.secondary">{expandedTool === "swap-router" ? "−" : "+"}</Typography>}
+                  >
+                    <Typography variant="subtitle2">Jupiter Swap Router</Typography>
+                  </AccordionSummary>
+                  <AccordionDetails sx={{ pt: 0.5 }}>
+                    <JupiterSwapRouter holdingsState={holdingsState} />
+                  </AccordionDetails>
+                </Accordion>
+              ) : null}
+
               <Accordion
                 expanded={expandedTool === "staking"}
                 onChange={(_event, isExpanded) => {
@@ -331,6 +359,24 @@ export function WalletSection() {
                 </AccordionSummary>
                 <AccordionDetails sx={{ pt: 0.5 }}>
                   <ApprovalRiskScanner holdingsState={holdingsState} />
+                </AccordionDetails>
+              </Accordion>
+
+              <Accordion
+                expanded={expandedTool === "delegate-explorer"}
+                onChange={(_event, isExpanded) => {
+                  setExpandedTool(isExpanded ? "delegate-explorer" : false);
+                }}
+                disableGutters
+                sx={{ bgcolor: "transparent", border: "1px solid", borderColor: "divider", borderRadius: "8px !important" }}
+              >
+                <AccordionSummary
+                  expandIcon={<Typography color="text.secondary">{expandedTool === "delegate-explorer" ? "−" : "+"}</Typography>}
+                >
+                  <Typography variant="subtitle2">Delegate Explorer</Typography>
+                </AccordionSummary>
+                <AccordionDetails sx={{ pt: 0.5 }}>
+                  <DelegateExplorer holdingsState={holdingsState} />
                 </AccordionDetails>
               </Accordion>
 
