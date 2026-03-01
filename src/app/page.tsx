@@ -1,7 +1,6 @@
 import { grapeLinks, grapeProducts } from "@/lib/grape";
 import { LiveSignalsPanel } from "@/components/solana/live-signals-panel";
 import { RotatingTagline } from "@/components/brand/rotating-tagline";
-import { InstallPwaButton } from "@/components/pwa/install-pwa-button";
 import GitHubIcon from "@mui/icons-material/GitHub";
 import Image from "next/image";
 import {
@@ -194,7 +193,6 @@ export default function Home() {
                     flexWrap="wrap"
                     useFlexGap
                   >
-                    <InstallPwaButton appName="Grape Hub" />
                     <Button
                       variant="contained"
                       color="primary"
@@ -269,8 +267,9 @@ export default function Home() {
                 </Stack>
                 <Stack direction={{ xs: "column", md: "row" }} spacing={1}>
                   <Chip label="Programs: 6" variant="outlined" color="secondary" />
-                  <Chip label="Governance UI" variant="outlined" color="secondary" />
-                  <Chip label="Installable Web App" variant="outlined" color="secondary" />
+                  <Chip label="APIs: 4" variant="outlined" color="secondary" />
+                  <Chip label="Interfaces: 5" variant="outlined" color="secondary" />
+                  <Chip label="Discord Bots: 4" variant="outlined" color="secondary" />
                 </Stack>
               </Stack>
             </Grid>
