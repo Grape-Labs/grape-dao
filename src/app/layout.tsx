@@ -1,8 +1,9 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Space_Grotesk, IBM_Plex_Mono } from "next/font/google";
 import "@solana/wallet-adapter-react-ui/styles.css";
 import "./globals.css";
 import { MuiThemeProvider } from "@/components/providers/mui-theme-provider";
+import { PwaRegistration } from "@/components/pwa/pwa-registration";
 import { SolanaWalletProvider } from "@/components/providers/solana-wallet-provider";
 
 const displayFont = Space_Grotesk({
@@ -18,6 +19,7 @@ const monoFont = IBM_Plex_Mono({
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://grapedao.org"),
+  applicationName: "Grape Hub",
   title: {
     default: "Grape Hub",
     template: "%s | Grape Hub"
@@ -26,6 +28,12 @@ export const metadata: Metadata = {
     "Grape Hub at grapedao.org: Solana products across reputation, verification, access, governance, and wallet connectivity.",
   alternates: {
     canonical: "/"
+  },
+  manifest: "/manifest-hub.webmanifest",
+  appleWebApp: {
+    capable: true,
+    title: "Grape Hub",
+    statusBarStyle: "black-translucent"
   },
   icons: {
     icon: [
@@ -63,6 +71,11 @@ export const metadata: Metadata = {
   }
 };
 
+export const viewport: Viewport = {
+  themeColor: "#070c10",
+  viewportFit: "cover"
+};
+
 export default function RootLayout({
   children
 }: Readonly<{
@@ -72,7 +85,10 @@ export default function RootLayout({
     <html lang="en">
       <body className={`${displayFont.variable} ${monoFont.variable}`}>
         <MuiThemeProvider>
-          <SolanaWalletProvider>{children}</SolanaWalletProvider>
+          <SolanaWalletProvider>
+            <PwaRegistration />
+            {children}
+          </SolanaWalletProvider>
         </MuiThemeProvider>
       </body>
     </html>

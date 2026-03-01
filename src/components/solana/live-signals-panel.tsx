@@ -14,6 +14,12 @@ type LiveSignalsState = {
 };
 
 const POLL_INTERVAL_MS = 15_000;
+const WAVE_WIDTH = 200;
+const WAVE_BASELINE = 12;
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max);
+}
 
 function formatMetricNumber(value: number) {
   if (!Number.isFinite(value)) {
@@ -36,6 +42,34 @@ function buildLiveStatusLabel(tps: number) {
     return "Network Slow";
   }
   return "Data Pending";
+}
+
+function buildFlatlinePath() {
+  return `M0 ${WAVE_BASELINE} L${WAVE_WIDTH} ${WAVE_BASELINE}`;
+}
+
+function buildHeartbeatPath(cycles: number, amplitude: number) {
+  const safeCycles = Math.max(2, cycles);
+  const safeAmplitude = clamp(amplitude, 2, 8);
+  const cycleWidth = WAVE_WIDTH / safeCycles;
+  let path = `M0 ${WAVE_BASELINE}`;
+
+  for (let cycle = 0; cycle < safeCycles; cycle += 1) {
+    const start = cycle * cycleWidth;
+    const x = (ratio: number) => start + cycleWidth * ratio;
+    const y = (offset: number) => WAVE_BASELINE + offset;
+
+    path += ` L${x(0.5)} ${y(0)}`;
+    path += ` L${x(0.58)} ${y(-safeAmplitude * 0.35)}`;
+    path += ` L${x(0.63)} ${y(0)}`;
+    path += ` L${x(0.69)} ${y(-safeAmplitude)}`;
+    path += ` L${x(0.74)} ${y(safeAmplitude * 0.72)}`;
+    path += ` L${x(0.8)} ${y(-safeAmplitude * 0.45)}`;
+    path += ` L${x(0.88)} ${y(0)}`;
+    path += ` L${x(1)} ${y(0)}`;
+  }
+
+  return path;
 }
 
 export function LiveSignalsPanel() {
@@ -165,6 +199,44 @@ export function LiveSignalsPanel() {
     () => buildLiveStatusLabel(signals?.tps ?? 0),
     [signals?.tps]
   );
+  const hasHeartbeatData =
+    !isLoading &&
+    Boolean(signals) &&
+    Number.isFinite(signals?.tps) &&
+    Number.isFinite(signals?.avgSlotMs) &&
+    (signals?.avgSlotMs ?? 0) > 0;
+
+  const waveform = useMemo(() => {
+    if (!hasHeartbeatData || !signals) {
+      const flatline = buildFlatlinePath();
+      return {
+        primary: flatline,
+        secondary: flatline,
+        shiftDurationA: 0,
+        shiftDurationB: 0,
+        glowDuration: 0,
+        intensity: 0
+      };
+    }
+
+    const normalizedTps = clamp(signals.tps / 1800, 0, 1);
+    const normalizedSlot = clamp((700 - signals.avgSlotMs) / 420, 0, 1);
+    const intensity = clamp(normalizedTps * 0.7 + normalizedSlot * 0.3, 0, 1);
+    const amplitude = 2.2 + intensity * 5.8;
+    const cycles = 2 + Math.round(intensity * 2);
+    const shiftDurationA = 4.4 - intensity * 2.9;
+    const shiftDurationB = shiftDurationA * 1.35;
+    const glowDuration = 2.8 - intensity * 1.4;
+
+    return {
+      primary: buildHeartbeatPath(cycles, amplitude),
+      secondary: buildHeartbeatPath(cycles, Math.max(2, amplitude * 0.72)),
+      shiftDurationA,
+      shiftDurationB,
+      glowDuration,
+      intensity
+    };
+  }, [hasHeartbeatData, signals]);
 
   return (
     <Card
@@ -181,24 +253,66 @@ export function LiveSignalsPanel() {
           <Stack direction="row" justifyContent="space-between" alignItems="center">
             <Typography variant="subtitle2">Live Solana Signals</Typography>
             <Box className="fx-wave" aria-label="Live waveform">
-              <svg viewBox="0 0 200 24" preserveAspectRatio="none">
+              <svg
+                viewBox="0 0 200 24"
+                preserveAspectRatio="none"
+                style={
+                  hasHeartbeatData
+                    ? { animationDuration: `${waveform.shiftDurationA}s` }
+                    : { animation: "none" }
+                }
+              >
                 <path
                   className="secondary"
-                  d="M0 12 C8 5 16 19 24 12 C32 5 40 19 48 12 C56 5 64 19 72 12 C80 5 88 19 96 12 C104 5 112 19 120 12 C128 5 136 19 144 12 C152 5 160 19 168 12 C176 5 184 19 192 12 C196 10 198 11 200 12"
+                  d={waveform.secondary}
+                  style={
+                    hasHeartbeatData
+                      ? { opacity: 0.56 + waveform.intensity * 0.3 }
+                      : { opacity: 0.36 }
+                  }
                 />
                 <path
                   className="primary"
-                  d="M0 12 C8 5 16 19 24 12 C32 5 40 19 48 12 C56 5 64 19 72 12 C80 5 88 19 96 12 C104 5 112 19 120 12 C128 5 136 19 144 12 C152 5 160 19 168 12 C176 5 184 19 192 12 C196 10 198 11 200 12"
+                  d={waveform.primary}
+                  style={
+                    hasHeartbeatData
+                      ? {
+                          animationDuration: `${waveform.glowDuration}s`,
+                          opacity: 0.82 + waveform.intensity * 0.18
+                        }
+                      : { animation: "none", opacity: 0.45 }
+                  }
                 />
               </svg>
-              <svg viewBox="0 0 200 24" preserveAspectRatio="none">
+              <svg
+                viewBox="0 0 200 24"
+                preserveAspectRatio="none"
+                style={
+                  hasHeartbeatData
+                    ? { animationDuration: `${waveform.shiftDurationB}s` }
+                    : { animation: "none" }
+                }
+              >
                 <path
                   className="secondary"
-                  d="M0 12 C8 5 16 19 24 12 C32 5 40 19 48 12 C56 5 64 19 72 12 C80 5 88 19 96 12 C104 5 112 19 120 12 C128 5 136 19 144 12 C152 5 160 19 168 12 C176 5 184 19 192 12 C196 10 198 11 200 12"
+                  d={waveform.secondary}
+                  style={
+                    hasHeartbeatData
+                      ? { opacity: 0.46 + waveform.intensity * 0.3 }
+                      : { opacity: 0.3 }
+                  }
                 />
                 <path
                   className="primary"
-                  d="M0 12 C8 5 16 19 24 12 C32 5 40 19 48 12 C56 5 64 19 72 12 C80 5 88 19 96 12 C104 5 112 19 120 12 C128 5 136 19 144 12 C152 5 160 19 168 12 C176 5 184 19 192 12 C196 10 198 11 200 12"
+                  d={waveform.primary}
+                  style={
+                    hasHeartbeatData
+                      ? {
+                          animationDuration: `${waveform.glowDuration * 1.1}s`,
+                          opacity: 0.72 + waveform.intensity * 0.2
+                        }
+                      : { animation: "none", opacity: 0.4 }
+                  }
                 />
               </svg>
             </Box>
