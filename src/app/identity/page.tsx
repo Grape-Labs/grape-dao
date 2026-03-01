@@ -100,7 +100,6 @@ export default function IdentityPage() {
             <Stack direction={{ xs: "column", sm: "row" }} spacing={1} useFlexGap flexWrap="wrap">
               <Chip label="Mainnet Operations" variant="outlined" color="secondary" />
               <Chip label="Identity + Governance Tooling" variant="outlined" color="secondary" />
-              <Chip label="Mobile Ready Workspace" variant="outlined" color="secondary" />
             </Stack>
           </Stack>
         </CardContent>
