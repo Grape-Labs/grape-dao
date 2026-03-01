@@ -1,4 +1,4 @@
-const CACHE_NAME = "grape-pwa-v1";
+const CACHE_NAME = "grape-pwa-v2";
 const CORE_ASSETS = [
   "/",
   "/identity",

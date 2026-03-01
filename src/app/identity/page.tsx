@@ -17,6 +17,13 @@ export const metadata: Metadata = {
     capable: true,
     title: "Grape Identity",
     statusBarStyle: "black-translucent"
+  },
+  icons: {
+    icon: [
+      { url: "/icons/identity-192.png", type: "image/png", sizes: "192x192" },
+      { url: "/icons/identity-512.png", type: "image/png", sizes: "512x512" }
+    ],
+    apple: [{ url: "/icons/identity-192.png", type: "image/png", sizes: "192x192" }]
   }
 };
 

@@ -37,13 +37,14 @@ export const metadata: Metadata = {
   },
   icons: {
     icon: [
+      { url: "/icons/grape-192.png", type: "image/png", sizes: "192x192" },
+      { url: "/icons/grape-512.png", type: "image/png", sizes: "512x512" },
       { url: "/favicon.ico", type: "image/x-icon" },
       { url: "/images/favicon.ico", type: "image/x-icon" }
     ],
-    shortcut: "/favicon.ico",
+    shortcut: "/icons/grape-192.png",
     apple: [
-      { url: "/apple-icon.png", type: "image/png", sizes: "180x180" },
-      { url: "/images/apple-icon.png", type: "image/png", sizes: "180x180" }
+      { url: "/apple-icon.png", type: "image/png", sizes: "180x180" }
     ]
   },
   openGraph: {
