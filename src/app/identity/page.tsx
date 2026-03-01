@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { WalletSection } from "@/components/wallet/wallet-section";
 import { InstallPwaButton } from "@/components/pwa/install-pwa-button";
 import { grapeLinks } from "@/lib/grape";
@@ -106,7 +107,9 @@ export default function IdentityPage() {
       </Card>
 
       <Box mt={3}>
-        <WalletSection enableJupiterSwapRouter={enableJupiterSwapRouter} />
+        <Suspense fallback={<Card variant="outlined" sx={{ borderRadius: 2 }}><CardContent><Typography color="text.secondary">Loading identity tools...</Typography></CardContent></Card>}>
+          <WalletSection enableJupiterSwapRouter={enableJupiterSwapRouter} />
+        </Suspense>
       </Box>
     </Container>
   );
