@@ -13,6 +13,7 @@ export type TokenHolding = {
   amountLabel: string;
   rawAmount: string;
   decimals: number;
+  accountState: string;
   isZeroBalance: boolean;
   delegate: string | null;
   delegatedAmount: string | null;
@@ -136,6 +137,8 @@ export function useWalletHoldings(
               amountLabel: tokenAmount.uiAmountString,
               rawAmount: tokenAmount.amount,
               decimals: tokenAmount.decimals,
+              accountState:
+                (parsedData.parsed.info.state as string | undefined) ?? "unknown",
               isZeroBalance,
               delegate: (parsedData.parsed.info.delegate as string | undefined) ?? null,
               delegatedAmount:

@@ -34,7 +34,7 @@ type RiskRow = {
 };
 
 type ScannerStatus = {
-  severity: "success" | "error" | "info";
+  severity: "success" | "error" | "info" | "warning";
   message: string;
 } | null;
 
@@ -102,6 +102,11 @@ function computeRiskRow(account: TokenHolding, ownerAddress: string | null): Ris
     reasons.push("Close authority exists on non-empty account.");
   }
 
+  if (account.accountState === "frozen") {
+    score += 22;
+    reasons.push("Token account is frozen. Delegate changes and transfers require thaw.");
+  }
+
   score = clamp(score, 0, 100);
 
   if (score === 0) {
@@ -145,6 +150,10 @@ export function ApprovalRiskScanner({ holdingsState }: ApprovalRiskScannerProps)
   const delegateRows = useMemo(
     () => riskRows.filter((row) => row.hasDelegate),
     [riskRows]
+  );
+  const frozenDelegateRows = useMemo(
+    () => delegateRows.filter((row) => row.account.accountState === "frozen"),
+    [delegateRows]
   );
 
   const portfolioRiskScore = useMemo(() => {
@@ -214,12 +223,17 @@ export function ApprovalRiskScanner({ holdingsState }: ApprovalRiskScannerProps)
       setStatus({ severity: "success", message: successMessage });
       refresh();
     } catch (unknownError) {
+      const message =
+        unknownError instanceof Error
+          ? unknownError.message
+          : "Failed to revoke delegate approvals.";
+      const looksFrozenFailure =
+        /account is frozen/i.test(message) || /custom program error:\s*0x11/i.test(message);
       setStatus({
         severity: "error",
-        message:
-          unknownError instanceof Error
-            ? unknownError.message
-            : "Failed to revoke delegate approvals."
+        message: looksFrozenFailure
+          ? "Revoke failed: token account is frozen. Thaw account first using freeze authority, then revoke delegate."
+          : message
       });
     } finally {
       setIsSubmitting(false);
@@ -228,6 +242,14 @@ export function ApprovalRiskScanner({ holdingsState }: ApprovalRiskScannerProps)
 
   function revokeSingleDelegate(account: TokenHolding) {
     if (!publicKey) {
+      return;
+    }
+    if (account.accountState === "frozen") {
+      setStatus({
+        severity: "warning",
+        message:
+          "This token account is frozen. Thaw with freeze authority first, then revoke delegate."
+      });
       return;
     }
     const instruction = createRevokeInstruction(
@@ -243,7 +265,18 @@ export function ApprovalRiskScanner({ holdingsState }: ApprovalRiskScannerProps)
     if (!publicKey) {
       return;
     }
-    const instructions = delegateRows.map((row) =>
+    const revocableRows = delegateRows.filter(
+      (row) => row.account.accountState !== "frozen"
+    );
+    if (revocableRows.length === 0 && frozenDelegateRows.length > 0) {
+      setStatus({
+        severity: "warning",
+        message:
+          "All delegated accounts are frozen. Thaw them with freeze authority before revoking."
+      });
+      return;
+    }
+    const instructions = revocableRows.map((row) =>
       createRevokeInstruction(
         new PublicKey(row.account.account),
         publicKey,
@@ -253,7 +286,7 @@ export function ApprovalRiskScanner({ holdingsState }: ApprovalRiskScannerProps)
     );
     void submitRevokeInstructions(
       instructions,
-      `Revoked delegate approvals for ${delegateRows.length} account(s).`
+      `Revoked delegate approvals for ${revocableRows.length} account(s).`
     );
   }
 
@@ -283,6 +316,7 @@ export function ApprovalRiskScanner({ holdingsState }: ApprovalRiskScannerProps)
             <Chip label={`Level: ${portfolioLevel}`} variant="outlined" size="small" />
             <Chip label={`Flagged Accounts: ${riskRows.length}`} variant="outlined" size="small" />
             <Chip label={`Delegates Active: ${delegateRows.length}`} variant="outlined" size="small" />
+            <Chip label={`Frozen Delegates: ${frozenDelegateRows.length}`} variant="outlined" size="small" />
           </Stack>
 
           {riskRows.length === 0 ? (

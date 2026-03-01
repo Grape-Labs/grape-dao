@@ -189,10 +189,20 @@ export function IncidentResponseMode({ holdingsState }: IncidentResponseModeProp
     let freezeAuthorityRotations = 0;
     let solSweepLamports = 0;
     let skippedExternalCloseAuthorities = 0;
+    let skippedFrozenDelegateAccounts = 0;
 
     if (operations.revokeDelegates) {
       const revokeInstructions = holdings.tokenAccounts
-        .filter((account) => Boolean(account.delegate))
+        .filter((account) => {
+          if (!account.delegate) {
+            return false;
+          }
+          if (account.accountState === "frozen") {
+            skippedFrozenDelegateAccounts += 1;
+            return false;
+          }
+          return true;
+        })
         .map((account) =>
           createRevokeInstruction(
             new PublicKey(account.account),
@@ -207,6 +217,11 @@ export function IncidentResponseMode({ holdingsState }: IncidentResponseModeProp
       );
       if (delegateRevokes === 0) {
         warnings.push("No delegate approvals found to revoke.");
+      }
+      if (skippedFrozenDelegateAccounts > 0) {
+        warnings.push(
+          `${skippedFrozenDelegateAccounts} delegated account(s) are frozen and were skipped. Thaw first, then revoke.`
+        );
       }
     }
 

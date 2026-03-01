@@ -17,8 +17,10 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  FormControlLabel,
   Link,
   Stack,
+  Switch,
   Tab,
   Tabs,
   Typography
@@ -35,6 +37,7 @@ import {
 
 const TOKEN_METADATA_PROGRAM_ID = new PublicKey(MPL_TOKEN_METADATA_PROGRAM_ID);
 const METADATA_SEED = new TextEncoder().encode("metadata");
+const IDENTITY_MEDIA_PREF_STORAGE_KEY = "grapehub.identity.media.enabled";
 
 function shortenAddress(address: string) {
   return `${address.slice(0, 6)}...${address.slice(-6)}`;
@@ -196,6 +199,17 @@ function resolveMetadataUri(uri: string) {
   return normalized;
 }
 
+function buildTokenImageProxyUrl(source: string, enabled: boolean) {
+  if (!enabled) {
+    return null;
+  }
+  const resolved = resolveMetadataUri(source);
+  if (!resolved) {
+    return null;
+  }
+  return `/api/media/token-image?url=${encodeURIComponent(resolved)}`;
+}
+
 function asNonEmptyString(value: unknown) {
   if (typeof value !== "string") {
     return null;
@@ -257,9 +271,30 @@ export function HoldingsPanel({ holdingsState }: HoldingsPanelProps) {
   const [shyftNfts, setShyftNfts] = useState<ShyftNftItem[]>([]);
   const [shyftError, setShyftError] = useState<string | null>(null);
   const [shyftLoading, setShyftLoading] = useState(false);
+  const [isMediaEnabled, setIsMediaEnabled] = useState(false);
   const selectedTokenMetadata = selectedToken
     ? getTokenMetadata(selectedToken.mint)
     : null;
+  const selectedTokenLogoProxyUrl = useMemo(
+    () =>
+      buildTokenImageProxyUrl(
+        selectedTokenMetadata?.logoURI || "",
+        isMediaEnabled
+      ),
+    [isMediaEnabled, selectedTokenMetadata?.logoURI]
+  );
+  const selectedShyftNftImageProxyUrl = useMemo(() => {
+    const source = selectedShyftNft?.image_uri || selectedShyftNft?.image || "";
+    return buildTokenImageProxyUrl(source, isMediaEnabled);
+  }, [isMediaEnabled, selectedShyftNft?.image, selectedShyftNft?.image_uri]);
+  const selectedMetaplexImageProxyUrl = useMemo(
+    () =>
+      buildTokenImageProxyUrl(
+        metaplexMetadata?.jsonImage || "",
+        isMediaEnabled
+      ),
+    [isMediaEnabled, metaplexMetadata?.jsonImage]
+  );
   const potentialNfts = useMemo(
     () =>
       holdings.tokens.filter(
@@ -309,6 +344,28 @@ export function HoldingsPanel({ holdingsState }: HoldingsPanelProps) {
       timeStyle: "short"
     }).format(updatedAt);
   }, [updatedAt]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const storedPreference = window.localStorage.getItem(
+      IDENTITY_MEDIA_PREF_STORAGE_KEY
+    );
+    if (storedPreference === "true") {
+      setIsMediaEnabled(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    window.localStorage.setItem(
+      IDENTITY_MEDIA_PREF_STORAGE_KEY,
+      isMediaEnabled ? "true" : "false"
+    );
+  }, [isMediaEnabled]);
 
   useEffect(() => {
     let cancelled = false;
@@ -552,14 +609,35 @@ export function HoldingsPanel({ holdingsState }: HoldingsPanelProps) {
       <CardContent sx={{ p: 1.75 }}>
         <Stack direction="row" alignItems="center" justifyContent="space-between" gap={1}>
           <Typography variant="subtitle1">Holdings</Typography>
-          <Button
-            variant="outlined"
-            size="small"
-            onClick={refresh}
-            disabled={!ownerAddress || isLoading}
-          >
-            {isLoading ? "Refreshing..." : "Refresh"}
-          </Button>
+          <Stack direction="row" spacing={0.6} alignItems="center">
+            <FormControlLabel
+              control={
+                <Switch
+                  size="small"
+                  checked={isMediaEnabled}
+                  onChange={(_event, checked) => {
+                    setIsMediaEnabled(checked);
+                  }}
+                />
+              }
+              label={isMediaEnabled ? "Media On" : "Media Off"}
+              sx={{
+                m: 0,
+                "& .MuiFormControlLabel-label": {
+                  fontSize: "0.75rem",
+                  color: "text.secondary"
+                }
+              }}
+            />
+            <Button
+              variant="outlined"
+              size="small"
+              onClick={refresh}
+              disabled={!ownerAddress || isLoading}
+            >
+              {isLoading ? "Refreshing..." : "Refresh"}
+            </Button>
+          </Stack>
         </Stack>
 
         <Divider sx={{ my: 1.5 }} />
@@ -615,6 +693,12 @@ export function HoldingsPanel({ holdingsState }: HoldingsPanelProps) {
               <Typography variant="caption" color="text.secondary" display="block" mt={1}>
                 Loading Shyft wallet data...
               </Typography>
+            ) : null}
+            {!isMediaEnabled ? (
+              <Alert severity="info" sx={{ mt: 1.2 }}>
+                External token/NFT images are disabled. Enable media to load images
+                through the secure proxy.
+              </Alert>
             ) : null}
 
             <Box mt={1.4} sx={{ display: "grid", gap: 0.75 }}>
@@ -851,10 +935,10 @@ export function HoldingsPanel({ holdingsState }: HoldingsPanelProps) {
         <DialogContent dividers>
           {selectedShyftNft ? (
             <Stack spacing={1.35}>
-              {selectedShyftNft.image_uri || selectedShyftNft.image ? (
+              {selectedShyftNftImageProxyUrl ? (
                 <Box
                   component="img"
-                  src={selectedShyftNft.image_uri || selectedShyftNft.image}
+                  src={selectedShyftNftImageProxyUrl}
                   alt={selectedShyftNft.name || "NFT image"}
                   sx={{
                     width: 80,
@@ -917,11 +1001,11 @@ export function HoldingsPanel({ holdingsState }: HoldingsPanelProps) {
             </Stack>
           ) : selectedToken ? (
             <Stack spacing={1.35}>
-              {selectedTokenMetadata?.logoURI ? (
+              {selectedTokenLogoProxyUrl ? (
                 <Box
                   component="img"
-                  src={selectedTokenMetadata.logoURI}
-                  alt={`${selectedTokenMetadata.symbol} logo`}
+                  src={selectedTokenLogoProxyUrl}
+                  alt={`${selectedTokenMetadata?.symbol || "Token"} logo`}
                   sx={{
                     width: 46,
                     height: 46,
@@ -1058,6 +1142,18 @@ export function HoldingsPanel({ holdingsState }: HoldingsPanelProps) {
               >
                 Close Authority: {selectedToken.closeAuthority ?? "None"}
               </Typography>
+              <Typography
+                variant="body2"
+                sx={{ wordBreak: "break-all", fontFamily: "var(--font-mono), monospace" }}
+              >
+                Account State: {selectedToken.accountState || "Unknown"}
+              </Typography>
+              {selectedToken.accountState === "frozen" ? (
+                <Alert severity="warning">
+                  This token account is frozen. Transfers and delegate updates require
+                  thaw by the mint freeze authority.
+                </Alert>
+              ) : null}
 
               <Divider />
               <Typography variant="caption" color="text.secondary">
@@ -1114,10 +1210,10 @@ export function HoldingsPanel({ holdingsState }: HoldingsPanelProps) {
                     </Typography>
                   )}
 
-                  {metaplexMetadata.jsonImage ? (
+                  {selectedMetaplexImageProxyUrl ? (
                     <Box
                       component="img"
-                      src={metaplexMetadata.jsonImage}
+                      src={selectedMetaplexImageProxyUrl}
                       alt={`${metaplexMetadata.jsonSymbol || metaplexMetadata.symbol || "token"} image`}
                       sx={{
                         width: 84,
