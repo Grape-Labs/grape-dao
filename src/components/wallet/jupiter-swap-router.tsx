@@ -134,6 +134,19 @@ function formatAtomicAmount(rawAmount: string, decimals: number) {
   return fraction ? `${whole}.${fraction}` : whole;
 }
 
+function formatUiAmount(value: number, decimals = 9) {
+  if (!Number.isFinite(value) || value <= 0) {
+    return "0";
+  }
+  return value
+    .toLocaleString("en-US", {
+      useGrouping: false,
+      minimumFractionDigits: 0,
+      maximumFractionDigits: decimals
+    })
+    .replace(/\.?0+$/, "");
+}
+
 function safeParseNumber(value: string) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -256,6 +269,9 @@ export function JupiterSwapRouter({ holdingsState }: JupiterSwapRouterProps) {
   const [isExecuting, setIsExecuting] = useState(false);
 
   const [quote, setQuote] = useState<JupiterQuoteResponse | null>(null);
+  const [activeQuoteRequestKey, setActiveQuoteRequestKey] = useState<string | null>(
+    null
+  );
   const [quoteDecimals, setQuoteDecimals] = useState<{
     inputDecimals: number;
     outputDecimals: number;
@@ -269,6 +285,67 @@ export function JupiterSwapRouter({ holdingsState }: JupiterSwapRouterProps) {
   const { getTokenMetadata } = useTokenMetadata(
     holdings.tokenAccounts.map((account) => account.mint)
   );
+  const mintBalanceMap = useMemo(() => {
+    const map = new Map<string, { rawAmount: bigint; decimals: number }>();
+    holdings.tokenAccounts.forEach((account) => {
+      const existing = map.get(account.mint);
+      const rawAmount = BigInt(account.rawAmount);
+      if (existing) {
+        existing.rawAmount += rawAmount;
+        return;
+      }
+      map.set(account.mint, {
+        rawAmount,
+        decimals: account.decimals
+      });
+    });
+    return map;
+  }, [holdings.tokenAccounts]);
+  const currentQuoteRequestKey = useMemo(
+    () =>
+      [
+        inputMint,
+        outputMint,
+        amountInput.trim(),
+        slippageBpsInput.trim(),
+        safeMode ? "safe" : "unsafe",
+        onlyDirectRoutes ? "direct" : "multi"
+      ].join("|"),
+    [amountInput, inputMint, onlyDirectRoutes, outputMint, safeMode, slippageBpsInput]
+  );
+  const hasUsableQuote = Boolean(quote && activeQuoteRequestKey === currentQuoteRequestKey);
+
+  const getBalanceLabelForMint = useCallback(
+    (mint: string) => {
+      if (mint === SOL_MINT) {
+        return formatUiAmount(holdings.sol, 9);
+      }
+      const mintBalance = mintBalanceMap.get(mint);
+      if (!mintBalance) {
+        return "0";
+      }
+      return formatAtomicAmount(mintBalance.rawAmount.toString(), mintBalance.decimals);
+    },
+    [holdings.sol, mintBalanceMap]
+  );
+  const getBalanceRawForMint = useCallback(
+    (mint: string) => {
+      if (mint === SOL_MINT) {
+        return holdings.sol;
+      }
+      const mintBalance = mintBalanceMap.get(mint);
+      if (!mintBalance) {
+        return 0;
+      }
+      return Number(mintBalance.rawAmount);
+    },
+    [holdings.sol, mintBalanceMap]
+  );
+  const inputMintBalanceLabel = useMemo(
+    () => getBalanceLabelForMint(inputMint),
+    [getBalanceLabelForMint, inputMint]
+  );
+  const canUseMax = useMemo(() => getBalanceRawForMint(inputMint) > 0, [getBalanceRawForMint, inputMint]);
 
   const mintOptions = useMemo(() => {
     const fromWallet = holdings.tokenAccounts.map((account) => account.mint);
@@ -421,6 +498,7 @@ export function JupiterSwapRouter({ holdingsState }: JupiterSwapRouterProps) {
 
       const risk = evaluateRouteRisk(quoteData, slippageBps);
       setQuote(quoteData);
+      setActiveQuoteRequestKey(currentQuoteRequestKey);
       setQuoteDecimals({ inputDecimals, outputDecimals });
       setRouteRisk(risk);
       setStatus({
@@ -429,6 +507,7 @@ export function JupiterSwapRouter({ holdingsState }: JupiterSwapRouterProps) {
       });
     } catch (unknownError) {
       setQuote(null);
+      setActiveQuoteRequestKey(null);
       setQuoteDecimals(null);
       setRouteRisk(null);
       setStatus({
@@ -442,7 +521,7 @@ export function JupiterSwapRouter({ holdingsState }: JupiterSwapRouterProps) {
   }
 
   async function simulateSwap() {
-    if (!quote) {
+    if (!quote || !hasUsableQuote) {
       setStatus({ severity: "error", message: "Fetch a quote first." });
       return;
     }
@@ -491,7 +570,7 @@ export function JupiterSwapRouter({ holdingsState }: JupiterSwapRouterProps) {
   }
 
   async function executeSwap() {
-    if (!quote) {
+    if (!quote || !hasUsableQuote) {
       setStatus({ severity: "error", message: "Fetch a quote first." });
       return;
     }
@@ -569,6 +648,12 @@ export function JupiterSwapRouter({ holdingsState }: JupiterSwapRouterProps) {
     };
   }, [quote, quoteDecimals]);
 
+  const reverseSwapDirection = useCallback(() => {
+    setInputMint(outputMint);
+    setOutputMint(inputMint);
+    setSimulation(null);
+  }, [inputMint, outputMint]);
+
   return (
     <Card variant="outlined" sx={{ borderRadius: 1.75 }}>
       <CardContent sx={{ p: 1.75 }}>
@@ -601,26 +686,41 @@ export function JupiterSwapRouter({ holdingsState }: JupiterSwapRouterProps) {
               size="small"
               label="Input Mint"
               value={inputMint}
-              onChange={(event) => setInputMint(event.target.value)}
+              onChange={(event) => {
+                setInputMint(event.target.value);
+                setSimulation(null);
+              }}
               fullWidth
             >
               {mintOptions.map((option) => (
                 <MenuItem key={`input-${option.mint}`} value={option.mint}>
-                  {option.symbol} | {shortenAddress(option.mint)}
+                  {option.symbol} | Bal: {getBalanceLabelForMint(option.mint)} |{" "}
+                  {shortenAddress(option.mint)}
                 </MenuItem>
               ))}
             </TextField>
+            <Button
+              variant="outlined"
+              onClick={reverseSwapDirection}
+              sx={{ minWidth: { xs: "100%", md: 94 } }}
+            >
+              Reverse
+            </Button>
             <TextField
               select
               size="small"
               label="Output Mint"
               value={outputMint}
-              onChange={(event) => setOutputMint(event.target.value)}
+              onChange={(event) => {
+                setOutputMint(event.target.value);
+                setSimulation(null);
+              }}
               fullWidth
             >
               {mintOptions.map((option) => (
                 <MenuItem key={`output-${option.mint}`} value={option.mint}>
-                  {option.symbol} | {shortenAddress(option.mint)}
+                  {option.symbol} | Bal: {getBalanceLabelForMint(option.mint)} |{" "}
+                  {shortenAddress(option.mint)}
                 </MenuItem>
               ))}
             </TextField>
@@ -631,24 +731,48 @@ export function JupiterSwapRouter({ holdingsState }: JupiterSwapRouterProps) {
               size="small"
               label="Amount (Exact In)"
               value={amountInput}
-              onChange={(event) => setAmountInput(event.target.value)}
+              onChange={(event) => {
+                setAmountInput(event.target.value);
+                setSimulation(null);
+              }}
               fullWidth
             />
+            <Button
+              variant="outlined"
+              onClick={() => {
+                setAmountInput(inputMintBalanceLabel);
+                setSimulation(null);
+              }}
+              disabled={!canUseMax}
+              sx={{ minWidth: { xs: "100%", md: 94 } }}
+            >
+              Max
+            </Button>
             <TextField
               size="small"
               label="Slippage (bps)"
               value={slippageBpsInput}
-              onChange={(event) => setSlippageBpsInput(event.target.value)}
+              onChange={(event) => {
+                setSlippageBpsInput(event.target.value);
+                setSimulation(null);
+              }}
               fullWidth
             />
           </Stack>
+          <Typography variant="caption" color="text.secondary">
+            Available ({KNOWN_TOKEN_SYMBOLS[inputMint] || shortenAddress(inputMint)}):{" "}
+            {inputMintBalanceLabel}
+          </Typography>
 
           <Stack direction={{ xs: "column", sm: "row" }} spacing={0.5} useFlexGap flexWrap="wrap">
             <FormControlLabel
               control={
                 <Switch
                   checked={safeMode}
-                  onChange={(_event, checked) => setSafeMode(checked)}
+                  onChange={(_event, checked) => {
+                    setSafeMode(checked);
+                    setSimulation(null);
+                  }}
                 />
               }
               label="Safe Mode"
@@ -657,7 +781,10 @@ export function JupiterSwapRouter({ holdingsState }: JupiterSwapRouterProps) {
               control={
                 <Switch
                   checked={onlyDirectRoutes}
-                  onChange={(_event, checked) => setOnlyDirectRoutes(checked)}
+                  onChange={(_event, checked) => {
+                    setOnlyDirectRoutes(checked);
+                    setSimulation(null);
+                  }}
                 />
               }
               label="Direct Routes Only"
@@ -679,7 +806,7 @@ export function JupiterSwapRouter({ holdingsState }: JupiterSwapRouterProps) {
               onClick={() => {
                 void simulateSwap();
               }}
-              disabled={!quote || isLoadingQuote || isSimulating || isExecuting}
+              disabled={!hasUsableQuote || isLoadingQuote || isSimulating || isExecuting}
             >
               {isSimulating ? "Simulating..." : "Simulate Route"}
             </Button>
@@ -688,11 +815,16 @@ export function JupiterSwapRouter({ holdingsState }: JupiterSwapRouterProps) {
               onClick={() => {
                 void executeSwap();
               }}
-              disabled={!quote || isLoadingQuote || isSimulating || isExecuting}
+              disabled={!hasUsableQuote || isLoadingQuote || isSimulating || isExecuting}
             >
               {isExecuting ? "Executing..." : "Execute Swap"}
             </Button>
           </Stack>
+          {quote && !hasUsableQuote ? (
+            <Alert severity="warning">
+              Swap inputs changed since the last quote. Fetch a new quote before simulate or execute.
+            </Alert>
+          ) : null}
 
           {quote && routeRisk && quoteSummary ? (
             <Card variant="outlined" sx={{ borderRadius: 1.4 }}>
