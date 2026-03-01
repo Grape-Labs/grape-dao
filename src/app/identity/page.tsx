@@ -63,7 +63,6 @@ export default function IdentityPage() {
               <Typography variant="overline" color="secondary.light">
                 Grape Identity
               </Typography>
-              <Chip size="small" label="Installable PWA" color="secondary" variant="outlined" />
             </Stack>
             <Typography
               variant="h1"

@@ -110,9 +110,7 @@ export function SolanaWalletProvider({ children }: SolanaWalletProviderProps) {
     () => ({
       endpoint,
       defaultEndpoint: SHYFT_DEFAULT_RPC_ENDPOINT,
-      shyftApiKey:
-        extractShyftApiKeyFromRpcEndpoint(endpoint) ||
-        extractShyftApiKeyFromRpcEndpoint(SHYFT_DEFAULT_RPC_ENDPOINT),
+      shyftApiKey: extractShyftApiKeyFromRpcEndpoint(endpoint),
       options: RPC_PROVIDER_OPTIONS,
       setEndpoint,
       resetEndpoint

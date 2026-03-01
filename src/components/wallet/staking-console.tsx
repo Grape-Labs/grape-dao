@@ -47,10 +47,22 @@ type StatusState = {
 } | null;
 
 type ShyftStakeAccountShape = {
+  stakeAccountAddress?: string;
+  stakeAuthorityAddress?: string;
+  withdrawAuthorityAddress?: string;
+  voteAccountAddress?: string;
+  stake_account_address?: string;
+  stake_authority_address?: string;
+  withdraw_authority_address?: string;
+  vote_account_address?: string;
   stake_account?: string;
   address?: string;
   account?: string;
   stake_pubkey?: string;
+  total_amount?: number;
+  delegated_amount?: number;
+  active_amount?: number;
+  rent?: number;
   balance?: number;
   lamports?: number;
   delegated_stake?: number;
@@ -67,6 +79,38 @@ type ShyftStakeAccountShape = {
     withdrawer?: string;
   };
 };
+
+function parseNumberish(value: unknown) {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : 0;
+  }
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
+}
+
+function delay(ms: number) {
+  return new Promise<void>((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
+
+function isLikelyGatewayTimeoutError(unknownError: unknown) {
+  const message =
+    unknownError instanceof Error
+      ? unknownError.message
+      : typeof unknownError === "string"
+        ? unknownError
+        : "";
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes("504") ||
+    normalized.includes("gateway timeout") ||
+    normalized.includes("timed out")
+  );
+}
 
 function parseSolToLamports(input: string): bigint {
   const normalized = input.trim();
@@ -128,6 +172,8 @@ export function StakingConsole() {
 
   const mapShyftStakeAccount = useCallback((account: ShyftStakeAccountShape) => {
     const address =
+      account.stakeAccountAddress ||
+      account.stake_account_address ||
       account.stake_account ||
       account.address ||
       account.account ||
@@ -137,21 +183,42 @@ export function StakingConsole() {
       return null;
     }
 
-    const rawBalance = account.lamports ?? account.balance ?? 0;
+    const rawBalance =
+      account.lamports ?? account.balance ?? account.total_amount ?? 0;
     const rawDelegated =
-      account.delegated_lamports ?? account.delegated_stake ?? 0;
+      account.delegated_lamports ??
+      account.delegated_stake ??
+      account.delegated_amount ??
+      account.active_amount ??
+      0;
 
     const toLamports = (value: number) =>
       Number.isInteger(value) ? value : Math.round(value * LAMPORTS_PER_SOL);
 
     return {
       address,
-      lamports: toLamports(Number(rawBalance || 0)),
+      lamports: toLamports(parseNumberish(rawBalance)),
       state: account.state || account.status || "unknown",
-      delegatedLamports: toLamports(Number(rawDelegated || 0)),
-      voter: account.voter || account.voter_address || account.vote_account || null,
-      staker: account.staker || account.authorized?.staker || null,
-      withdrawer: account.withdrawer || account.authorized?.withdrawer || null
+      delegatedLamports: toLamports(parseNumberish(rawDelegated)),
+      voter:
+        account.voter ||
+        account.voter_address ||
+        account.vote_account ||
+        account.voteAccountAddress ||
+        account.vote_account_address ||
+        null,
+      staker:
+        account.staker ||
+        account.authorized?.staker ||
+        account.stakeAuthorityAddress ||
+        account.stake_authority_address ||
+        null,
+      withdrawer:
+        account.withdrawer ||
+        account.authorized?.withdrawer ||
+        account.withdrawAuthorityAddress ||
+        account.withdraw_authority_address ||
+        null
     } satisfies StakeAccountRow;
   }, []);
 
@@ -160,8 +227,9 @@ export function StakingConsole() {
       return null;
     }
 
-    const pageSize = 100;
-    const maxPages = 5;
+    // Shyft stake_accounts max page size is 10.
+    const pageSize = 10;
+    const maxPages = 20;
     const rows: StakeAccountRow[] = [];
 
     for (let page = 1; page <= maxPages; page += 1) {
@@ -213,7 +281,7 @@ export function StakingConsole() {
       if (shyftApiKey) {
         try {
           const shyftRows = await loadShyftStakeAccounts();
-          if (shyftRows) {
+          if (shyftRows && shyftRows.length > 0) {
             setStakeAccounts(shyftRows);
             setStakeSource("shyft");
             setIsLoadingStakes(false);
@@ -224,85 +292,137 @@ export function StakingConsole() {
         }
       }
 
-      // Stake account layout offsets for authorized keys:
-      // staker: 12, withdrawer: 44.
+      const getProgramAccountsByAuthority = async (offset: number) => {
+        // Stake account layout offsets for authorized keys:
+        // staker: 12, withdrawer: 44.
+        let lastError: unknown = null;
+        const maxAttempts = 3;
+        for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+          try {
+            return await connection.getProgramAccounts(StakeProgram.programId, {
+              commitment: "confirmed",
+              encoding: "base64",
+              dataSlice: {
+                offset: 0,
+                length: 0
+              },
+              filters: [
+                { dataSize: StakeProgram.space },
+                { memcmp: { offset, bytes: publicKey.toBase58() } }
+              ]
+            });
+          } catch (unknownError) {
+            lastError = unknownError;
+            if (!isLikelyGatewayTimeoutError(unknownError) || attempt === maxAttempts) {
+              throw unknownError;
+            }
+            await delay(250 * attempt);
+          }
+        }
+        throw lastError;
+      };
+
       const [asStaker, asWithdrawer] = await Promise.all([
-        connection.getParsedProgramAccounts(StakeProgram.programId, {
-          commitment: "confirmed",
-          filters: [
-            { dataSize: StakeProgram.space },
-            { memcmp: { offset: 12, bytes: publicKey.toBase58() } }
-          ]
-        }),
-        connection.getParsedProgramAccounts(StakeProgram.programId, {
-          commitment: "confirmed",
-          filters: [
-            { dataSize: StakeProgram.space },
-            { memcmp: { offset: 44, bytes: publicKey.toBase58() } }
-          ]
-        })
+        getProgramAccountsByAuthority(12),
+        getProgramAccountsByAuthority(44)
       ]);
 
-      const unique = new Map<
-        string,
-        (typeof asStaker | typeof asWithdrawer)[number]
-      >();
+      const rowsByAddress = new Map<string, StakeAccountRow>();
       [...asStaker, ...asWithdrawer].forEach((entry) => {
-        unique.set(entry.pubkey.toBase58(), entry);
+        const address = entry.pubkey.toBase58();
+        const current = rowsByAddress.get(address);
+        const lamports = Math.max(current?.lamports ?? 0, entry.account.lamports);
+        rowsByAddress.set(address, {
+          address,
+          lamports,
+          state: "unknown",
+          delegatedLamports: 0,
+          voter: null,
+          staker: null,
+          withdrawer: null
+        });
       });
 
-      const nextRows = await Promise.all(
-        Array.from(unique.values()).map(async (entry) => {
-          const parsedData = entry.account.data as ParsedAccountData;
-          const parsedInfo = parsedData.parsed.info as {
-            meta?: {
-              authorized?: {
-                staker?: string;
-                withdrawer?: string;
-              };
-            };
-            stake?: {
-              delegation?: {
-                stake?: string;
-                voter?: string;
-              };
-            };
-          };
+      const baseRows = Array.from(rowsByAddress.values());
+      const enrichedRows = [...baseRows];
+      const enrichmentChunkSize = 8;
 
-          let state = parsedData.parsed.type ?? "unknown";
-          try {
-            const activation = await connection.getStakeActivation(
-              entry.pubkey,
+      for (
+        let startIndex = 0;
+        startIndex < enrichedRows.length;
+        startIndex += enrichmentChunkSize
+      ) {
+        const chunkRows = enrichedRows.slice(startIndex, startIndex + enrichmentChunkSize);
+        const chunkResponses = await Promise.allSettled(
+          chunkRows.map(async (row) => {
+            const accountInfo = await connection.getParsedAccountInfo(
+              new PublicKey(row.address),
               "confirmed"
             );
-            state = activation.state;
-          } catch {
-            // Keep parsed fallback state.
+            if (!accountInfo.value) {
+              return null;
+            }
+            const parsedData = accountInfo.value.data as ParsedAccountData;
+            const parsedInfo = parsedData.parsed.info as {
+              meta?: {
+                authorized?: {
+                  staker?: string;
+                  withdrawer?: string;
+                };
+              };
+              stake?: {
+                delegation?: {
+                  stake?: string;
+                  voter?: string;
+                };
+              };
+            };
+
+            return {
+              address: row.address,
+              state: parsedData.parsed.type ?? row.state,
+              delegatedLamports: Number(parsedInfo.stake?.delegation?.stake ?? "0"),
+              voter: parsedInfo.stake?.delegation?.voter ?? null,
+              staker: parsedInfo.meta?.authorized?.staker ?? null,
+              withdrawer: parsedInfo.meta?.authorized?.withdrawer ?? null
+            };
+          })
+        );
+
+        chunkResponses.forEach((response, index) => {
+          if (response.status !== "fulfilled" || !response.value) {
+            return;
           }
+          const row = chunkRows[index];
+          if (!row) {
+            return;
+          }
+          const target = enrichedRows.find(
+            (candidate) => candidate.address === row.address
+          );
+          if (!target) {
+            return;
+          }
+          target.state = response.value.state;
+          target.delegatedLamports = response.value.delegatedLamports;
+          target.voter = response.value.voter;
+          target.staker = response.value.staker;
+          target.withdrawer = response.value.withdrawer;
+        });
+      }
 
-          return {
-            address: entry.pubkey.toBase58(),
-            lamports: entry.account.lamports,
-            state,
-            delegatedLamports: Number(
-              parsedInfo.stake?.delegation?.stake ?? "0"
-            ),
-            voter: parsedInfo.stake?.delegation?.voter ?? null,
-            staker: parsedInfo.meta?.authorized?.staker ?? null,
-            withdrawer: parsedInfo.meta?.authorized?.withdrawer ?? null
-          } satisfies StakeAccountRow;
-        })
-      );
-
-      nextRows.sort((a, b) => b.lamports - a.lamports);
-      setStakeAccounts(nextRows);
+      enrichedRows.sort((a, b) => b.lamports - a.lamports);
+      setStakeAccounts(enrichedRows);
       setStakeSource("rpc");
     } catch (unknownError) {
+      const isGatewayTimeout = isLikelyGatewayTimeoutError(unknownError);
       setStatus({
         severity: "error",
         message:
           unknownError instanceof Error
-            ? unknownError.message
+            ? isGatewayTimeout
+              ? `${unknownError.message} Try switching RPC to Shyft or use a Shyft RPC endpoint with api_key for stake account indexing.`
+              : unknownError.message
             : "Unable to load stake accounts."
       });
       setStakeAccounts([]);
