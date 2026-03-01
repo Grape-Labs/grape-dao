@@ -18,6 +18,7 @@ import { useMemo, useState } from "react";
 import { ApprovalRiskScanner } from "@/components/wallet/approval-risk-scanner";
 import { IdentityActions } from "@/components/wallet/identity-actions";
 import { HoldingsPanel } from "@/components/wallet/holdings-panel";
+import { IncidentResponseMode } from "@/components/wallet/incident-response-mode";
 import { ProgramBuffersManager } from "@/components/wallet/program-buffers-manager";
 import { RentRecoverySweeper } from "@/components/wallet/rent-recovery-sweeper";
 import { SignatureDecoder } from "@/components/wallet/signature-decoder";
@@ -330,6 +331,24 @@ export function WalletSection() {
                 </AccordionSummary>
                 <AccordionDetails sx={{ pt: 0.5 }}>
                   <ApprovalRiskScanner holdingsState={holdingsState} />
+                </AccordionDetails>
+              </Accordion>
+
+              <Accordion
+                expanded={expandedTool === "incident-response"}
+                onChange={(_event, isExpanded) => {
+                  setExpandedTool(isExpanded ? "incident-response" : false);
+                }}
+                disableGutters
+                sx={{ bgcolor: "transparent", border: "1px solid", borderColor: "divider", borderRadius: "8px !important" }}
+              >
+                <AccordionSummary
+                  expandIcon={<Typography color="text.secondary">{expandedTool === "incident-response" ? "−" : "+"}</Typography>}
+                >
+                  <Typography variant="subtitle2">Incident Response</Typography>
+                </AccordionSummary>
+                <AccordionDetails sx={{ pt: 0.5 }}>
+                  <IncidentResponseMode holdingsState={holdingsState} />
                 </AccordionDetails>
               </Accordion>
 
