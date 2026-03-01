@@ -14,7 +14,9 @@ import {
   Stack,
   Typography
 } from "@mui/material";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { ActionsBlinksExport } from "@/components/wallet/actions-blinks-export";
 import { ApprovalRiskScanner } from "@/components/wallet/approval-risk-scanner";
 import { DelegateExplorer } from "@/components/wallet/delegate-explorer";
 import { IdentityActions } from "@/components/wallet/identity-actions";
@@ -37,9 +39,46 @@ type WalletSectionProps = {
 export function WalletSection({
   enableJupiterSwapRouter = false
 }: WalletSectionProps) {
+  const searchParams = useSearchParams();
   const holdingsState = useWalletHoldings();
   const { securityPolicy } = useRpcEndpoint();
   const [expandedTool, setExpandedTool] = useState<string | false>("transact");
+  const lastAppliedActionRef = useRef<string | null>(null);
+  const initialAction = searchParams.get("action")?.trim().toLowerCase() || "";
+  const initialExpandedTool = useMemo(() => {
+    if (initialAction === "revoke") {
+      return "approval-risk";
+    }
+    if (initialAction === "sweep") {
+      return "incident-response";
+    }
+    if (initialAction === "stake" || initialAction === "staking") {
+      return "staking";
+    }
+    if (
+      initialAction === "swap" ||
+      initialAction === "swap-router" ||
+      initialAction === "jupiter"
+    ) {
+      return enableJupiterSwapRouter ? "swap-router" : "transact";
+    }
+    if (initialAction === "actions" || initialAction === "blinks") {
+      return "actions-blinks";
+    }
+    return "transact";
+  }, [enableJupiterSwapRouter, initialAction]);
+
+  useEffect(() => {
+    const actionKey = `${initialAction}:${enableJupiterSwapRouter ? "jup" : "nojup"}`;
+    if (!initialAction) {
+      return;
+    }
+    if (lastAppliedActionRef.current === actionKey) {
+      return;
+    }
+    setExpandedTool(initialExpandedTool);
+    lastAppliedActionRef.current = actionKey;
+  }, [enableJupiterSwapRouter, initialAction, initialExpandedTool]);
   const securitySnapshot = useMemo(() => {
     const ownerAddress = holdingsState.ownerAddress;
     const tokenAccounts = holdingsState.holdings.tokenAccounts;
@@ -306,6 +345,78 @@ export function WalletSection({
                 </AccordionDetails>
               </Accordion>
 
+              <Accordion
+                expanded={expandedTool === "approval-risk"}
+                onChange={(_event, isExpanded) => {
+                  setExpandedTool(isExpanded ? "approval-risk" : false);
+                }}
+                disableGutters
+                sx={{ bgcolor: "transparent", border: "1px solid", borderColor: "divider", borderRadius: "8px !important" }}
+              >
+                <AccordionSummary
+                  expandIcon={<Typography color="text.secondary">{expandedTool === "approval-risk" ? "−" : "+"}</Typography>}
+                >
+                  <Typography variant="subtitle2">Approval Risk Scanner</Typography>
+                </AccordionSummary>
+                <AccordionDetails sx={{ pt: 0.5 }}>
+                  <ApprovalRiskScanner holdingsState={holdingsState} />
+                </AccordionDetails>
+              </Accordion>
+
+              <Accordion
+                expanded={expandedTool === "incident-response"}
+                onChange={(_event, isExpanded) => {
+                  setExpandedTool(isExpanded ? "incident-response" : false);
+                }}
+                disableGutters
+                sx={{ bgcolor: "transparent", border: "1px solid", borderColor: "divider", borderRadius: "8px !important" }}
+              >
+                <AccordionSummary
+                  expandIcon={<Typography color="text.secondary">{expandedTool === "incident-response" ? "−" : "+"}</Typography>}
+                >
+                  <Typography variant="subtitle2">Incident Response</Typography>
+                </AccordionSummary>
+                <AccordionDetails sx={{ pt: 0.5 }}>
+                  <IncidentResponseMode holdingsState={holdingsState} />
+                </AccordionDetails>
+              </Accordion>
+
+              <Accordion
+                expanded={expandedTool === "delegate-explorer"}
+                onChange={(_event, isExpanded) => {
+                  setExpandedTool(isExpanded ? "delegate-explorer" : false);
+                }}
+                disableGutters
+                sx={{ bgcolor: "transparent", border: "1px solid", borderColor: "divider", borderRadius: "8px !important" }}
+              >
+                <AccordionSummary
+                  expandIcon={<Typography color="text.secondary">{expandedTool === "delegate-explorer" ? "−" : "+"}</Typography>}
+                >
+                  <Typography variant="subtitle2">Delegate Explorer</Typography>
+                </AccordionSummary>
+                <AccordionDetails sx={{ pt: 0.5 }}>
+                  <DelegateExplorer holdingsState={holdingsState} />
+                </AccordionDetails>
+              </Accordion>
+
+              <Accordion
+                expanded={expandedTool === "authority-map"}
+                onChange={(_event, isExpanded) => {
+                  setExpandedTool(isExpanded ? "authority-map" : false);
+                }}
+                disableGutters
+                sx={{ bgcolor: "transparent", border: "1px solid", borderColor: "divider", borderRadius: "8px !important" }}
+              >
+                <AccordionSummary
+                  expandIcon={<Typography color="text.secondary">{expandedTool === "authority-map" ? "−" : "+"}</Typography>}
+                >
+                  <Typography variant="subtitle2">Signer + Authority Map</Typography>
+                </AccordionSummary>
+                <AccordionDetails sx={{ pt: 0.5 }}>
+                  <SignerAuthorityMap holdingsState={holdingsState} />
+                </AccordionDetails>
+              </Accordion>
+
               {enableJupiterSwapRouter ? (
                 <Accordion
                   expanded={expandedTool === "swap-router"}
@@ -341,78 +452,6 @@ export function WalletSection({
                 </AccordionSummary>
                 <AccordionDetails sx={{ pt: 0.5 }}>
                   <StakingConsole />
-                </AccordionDetails>
-              </Accordion>
-
-              <Accordion
-                expanded={expandedTool === "approval-risk"}
-                onChange={(_event, isExpanded) => {
-                  setExpandedTool(isExpanded ? "approval-risk" : false);
-                }}
-                disableGutters
-                sx={{ bgcolor: "transparent", border: "1px solid", borderColor: "divider", borderRadius: "8px !important" }}
-              >
-                <AccordionSummary
-                  expandIcon={<Typography color="text.secondary">{expandedTool === "approval-risk" ? "−" : "+"}</Typography>}
-                >
-                  <Typography variant="subtitle2">Approval Risk Scanner</Typography>
-                </AccordionSummary>
-                <AccordionDetails sx={{ pt: 0.5 }}>
-                  <ApprovalRiskScanner holdingsState={holdingsState} />
-                </AccordionDetails>
-              </Accordion>
-
-              <Accordion
-                expanded={expandedTool === "delegate-explorer"}
-                onChange={(_event, isExpanded) => {
-                  setExpandedTool(isExpanded ? "delegate-explorer" : false);
-                }}
-                disableGutters
-                sx={{ bgcolor: "transparent", border: "1px solid", borderColor: "divider", borderRadius: "8px !important" }}
-              >
-                <AccordionSummary
-                  expandIcon={<Typography color="text.secondary">{expandedTool === "delegate-explorer" ? "−" : "+"}</Typography>}
-                >
-                  <Typography variant="subtitle2">Delegate Explorer</Typography>
-                </AccordionSummary>
-                <AccordionDetails sx={{ pt: 0.5 }}>
-                  <DelegateExplorer holdingsState={holdingsState} />
-                </AccordionDetails>
-              </Accordion>
-
-              <Accordion
-                expanded={expandedTool === "incident-response"}
-                onChange={(_event, isExpanded) => {
-                  setExpandedTool(isExpanded ? "incident-response" : false);
-                }}
-                disableGutters
-                sx={{ bgcolor: "transparent", border: "1px solid", borderColor: "divider", borderRadius: "8px !important" }}
-              >
-                <AccordionSummary
-                  expandIcon={<Typography color="text.secondary">{expandedTool === "incident-response" ? "−" : "+"}</Typography>}
-                >
-                  <Typography variant="subtitle2">Incident Response</Typography>
-                </AccordionSummary>
-                <AccordionDetails sx={{ pt: 0.5 }}>
-                  <IncidentResponseMode holdingsState={holdingsState} />
-                </AccordionDetails>
-              </Accordion>
-
-              <Accordion
-                expanded={expandedTool === "authority-map"}
-                onChange={(_event, isExpanded) => {
-                  setExpandedTool(isExpanded ? "authority-map" : false);
-                }}
-                disableGutters
-                sx={{ bgcolor: "transparent", border: "1px solid", borderColor: "divider", borderRadius: "8px !important" }}
-              >
-                <AccordionSummary
-                  expandIcon={<Typography color="text.secondary">{expandedTool === "authority-map" ? "−" : "+"}</Typography>}
-                >
-                  <Typography variant="subtitle2">Signer + Authority Map</Typography>
-                </AccordionSummary>
-                <AccordionDetails sx={{ pt: 0.5 }}>
-                  <SignerAuthorityMap holdingsState={holdingsState} />
                 </AccordionDetails>
               </Accordion>
 
@@ -467,6 +506,24 @@ export function WalletSection({
                 </AccordionSummary>
                 <AccordionDetails sx={{ pt: 0.5 }}>
                   <ProgramBuffersManager />
+                </AccordionDetails>
+              </Accordion>
+
+              <Accordion
+                expanded={expandedTool === "actions-blinks"}
+                onChange={(_event, isExpanded) => {
+                  setExpandedTool(isExpanded ? "actions-blinks" : false);
+                }}
+                disableGutters
+                sx={{ bgcolor: "transparent", border: "1px solid", borderColor: "divider", borderRadius: "8px !important" }}
+              >
+                <AccordionSummary
+                  expandIcon={<Typography color="text.secondary">{expandedTool === "actions-blinks" ? "−" : "+"}</Typography>}
+                >
+                  <Typography variant="subtitle2">Actions + Blinks Export</Typography>
+                </AccordionSummary>
+                <AccordionDetails sx={{ pt: 0.5 }}>
+                  <ActionsBlinksExport />
                 </AccordionDetails>
               </Accordion>
             </Stack>

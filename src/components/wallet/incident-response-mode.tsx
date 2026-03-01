@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import {
   ASSOCIATED_TOKEN_PROGRAM_ID,
@@ -158,6 +159,7 @@ function getTokenProgramIdForAccount(tokenProgramId: string) {
 }
 
 export function IncidentResponseMode({ holdingsState }: IncidentResponseModeProps) {
+  const searchParams = useSearchParams();
   const { connection } = useConnection();
   const { publicKey, connected, sendTransaction } = useWallet();
   const { holdings, refresh } = holdingsState;
@@ -178,6 +180,28 @@ export function IncidentResponseMode({ holdingsState }: IncidentResponseModeProp
   );
 
   const hasInputReady = connected && safeWalletAddress.trim().length > 0;
+
+  useEffect(() => {
+    const action = searchParams.get("action")?.trim().toLowerCase();
+    if (action !== "sweep") {
+      return;
+    }
+    const safeWalletParam = searchParams.get("safeWallet")?.trim();
+    const reserveParam = searchParams.get("reserveSol")?.trim();
+    if (safeWalletParam) {
+      setSafeWalletAddress(safeWalletParam);
+    }
+    if (reserveParam) {
+      setSolReserve(reserveParam);
+    }
+    setOperations({
+      revokeDelegates: false,
+      sweepTokens: true,
+      sweepSol: true,
+      rotateCloseAuthorities: false,
+      rotateMintAuthorities: false
+    });
+  }, [searchParams]);
 
   async function buildIncidentPlan(
     destinationWallet: PublicKey
