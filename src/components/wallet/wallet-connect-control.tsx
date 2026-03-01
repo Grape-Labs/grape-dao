@@ -5,6 +5,7 @@ import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import SettingsRoundedIcon from "@mui/icons-material/SettingsRounded";
 import { Button, Chip, Dialog, DialogContent, DialogTitle, IconButton, Stack, Tooltip } from "@mui/material";
 import { useState } from "react";
+import { IdentitySecurityPolicySelector } from "@/components/wallet/identity-security-policy-selector";
 import { useRpcEndpoint } from "@/components/providers/solana-wallet-provider";
 import { RpcEndpointSelector } from "@/components/wallet/rpc-endpoint-selector";
 
@@ -15,6 +16,7 @@ type WalletConnectControlProps = {
   showAdapterChip?: boolean;
   showNetworkChip?: boolean;
   showRpcSettings?: boolean;
+  showSecurityPolicySettings?: boolean;
   rpcSettingsTitle?: string;
   buttonMinWidth?: number;
 };
@@ -44,6 +46,7 @@ export function WalletConnectControl({
   showAdapterChip = true,
   showNetworkChip = true,
   showRpcSettings = true,
+  showSecurityPolicySettings = false,
   rpcSettingsTitle = "RPC Provider",
   buttonMinWidth = 170
 }: WalletConnectControlProps) {
@@ -124,7 +127,12 @@ export function WalletConnectControl({
         >
           <DialogTitle>{rpcSettingsTitle}</DialogTitle>
           <DialogContent dividers>
-            <RpcEndpointSelector compact showTitle={false} />
+            <Stack spacing={2}>
+              <RpcEndpointSelector compact showTitle={false} />
+              {showSecurityPolicySettings ? (
+                <IdentitySecurityPolicySelector compact />
+              ) : null}
+            </Stack>
           </DialogContent>
         </Dialog>
       ) : null}
