@@ -1,0 +1,52 @@
+{
+  "name": "Grape Hub",
+  "short_name": "Grape Hub",
+  "id": "/?source=pwa-hub",
+  "start_url": "/?source=pwa-hub",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#070c10",
+  "theme_color": "#070c10",
+  "description": "Identity, reputation, verification, access, and governance infrastructure for Solana communities.",
+  "categories": ["productivity", "social", "finance"],
+  "icons": [
+    {
+      "src": "/icons/grape-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/grape-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Identity",
+      "short_name": "Identity",
+      "url": "/identity",
+      "icons": [
+        {
+          "src": "/icons/identity-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Claims",
+      "short_name": "Claims",
+      "url": "/claims",
+      "icons": [
+        {
+          "src": "/icons/grape-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    }
+  ]
+}

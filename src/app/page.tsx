@@ -1,6 +1,7 @@
 import { grapeLinks, grapeProducts } from "@/lib/grape";
 import { LiveSignalsPanel } from "@/components/solana/live-signals-panel";
 import { RotatingTagline } from "@/components/brand/rotating-tagline";
+import { InstallPwaButton } from "@/components/pwa/install-pwa-button";
 import GitHubIcon from "@mui/icons-material/GitHub";
 import Image from "next/image";
 import {
@@ -186,17 +187,30 @@ export default function Home() {
                   Learn more in the docs and connect with the DAO on Discord.
                 </Typography>
                 <Stack spacing={1.1}>
-                  <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                  <Stack
+                    direction={{ xs: "column", sm: "row" }}
+                    spacing={1}
+                    alignItems={{ sm: "center" }}
+                    flexWrap="wrap"
+                    useFlexGap
+                  >
+                    <InstallPwaButton appName="Grape Hub" />
                     <Button
                       variant="contained"
                       color="primary"
                       href={grapeLinks.docs}
                       target="_blank"
                       rel="noreferrer"
+                      sx={{ width: { xs: "100%", sm: "auto" } }}
                     >
                       Read Docs
                     </Button>
-                    <Stack direction="row" spacing={0.8} alignItems="center" sx={{ flexShrink: 0 }}>
+                    <Stack
+                      direction="row"
+                      spacing={0.8}
+                      alignItems="center"
+                      sx={{ flexShrink: 0 }}
+                    >
                       <Tooltip title="Join Discord">
                         <IconButton
                           component="a"
@@ -256,6 +270,7 @@ export default function Home() {
                 <Stack direction={{ xs: "column", md: "row" }} spacing={1}>
                   <Chip label="Programs: 6" variant="outlined" color="secondary" />
                   <Chip label="Governance UI" variant="outlined" color="secondary" />
+                  <Chip label="Installable Web App" variant="outlined" color="secondary" />
                 </Stack>
               </Stack>
             </Grid>
