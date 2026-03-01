@@ -4,15 +4,17 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import type { ParsedAccountData } from "@solana/web3.js";
 import { PublicKey } from "@solana/web3.js";
-import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
+import { TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID } from "@solana/spl-token";
 
 export type TokenHolding = {
   account: string;
   mint: string;
+  tokenProgramId: string;
   amount: number;
   amountLabel: string;
   rawAmount: string;
   decimals: number;
+  accountState: string;
   isZeroBalance: boolean;
   delegate: string | null;
   delegatedAmount: string | null;
@@ -103,11 +105,16 @@ export function useWalletHoldings(
       setError(null);
 
       try {
-        const [balanceLamports, tokenAccounts] = await Promise.all([
+        const [balanceLamports, tokenAccounts, token2022Accounts] = await Promise.all([
           connection.getBalance(ownerPublicKey, "confirmed"),
           connection.getParsedTokenAccountsByOwner(
             ownerPublicKey,
             { programId: TOKEN_PROGRAM_ID },
+            "confirmed"
+          ),
+          connection.getParsedTokenAccountsByOwner(
+            ownerPublicKey,
+            { programId: TOKEN_2022_PROGRAM_ID },
             "confirmed"
           )
         ]);
@@ -116,7 +123,8 @@ export function useWalletHoldings(
           return;
         }
 
-        const mappedTokenAccounts = tokenAccounts.value
+        const combinedTokenAccounts = [...tokenAccounts.value, ...token2022Accounts.value];
+        const mappedTokenAccounts = combinedTokenAccounts
           .map((entry) => {
             const parsedData = entry.account.data as ParsedAccountData;
             const tokenAmount = parsedData.parsed.info.tokenAmount as {
@@ -132,10 +140,13 @@ export function useWalletHoldings(
             return {
               account: entry.pubkey.toBase58(),
               mint: parsedData.parsed.info.mint as string,
+              tokenProgramId: entry.account.owner.toBase58(),
               amount: Number.isFinite(amount) ? amount : 0,
               amountLabel: tokenAmount.uiAmountString,
               rawAmount: tokenAmount.amount,
               decimals: tokenAmount.decimals,
+              accountState:
+                (parsedData.parsed.info.state as string | undefined) ?? "unknown",
               isZeroBalance,
               delegate: (parsedData.parsed.info.delegate as string | undefined) ?? null,
               delegatedAmount:

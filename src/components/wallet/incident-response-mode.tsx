@@ -5,6 +5,7 @@ import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import {
   ASSOCIATED_TOKEN_PROGRAM_ID,
   AuthorityType,
+  TOKEN_2022_PROGRAM_ID,
   TOKEN_PROGRAM_ID,
   createAssociatedTokenAccountIdempotentInstruction,
   createRevokeInstruction,
@@ -149,6 +150,13 @@ function formatUnknownError(value: unknown) {
   return "Unknown transaction error.";
 }
 
+function getTokenProgramIdForAccount(tokenProgramId: string) {
+  if (tokenProgramId === TOKEN_2022_PROGRAM_ID.toBase58()) {
+    return TOKEN_2022_PROGRAM_ID;
+  }
+  return TOKEN_PROGRAM_ID;
+}
+
 export function IncidentResponseMode({ holdingsState }: IncidentResponseModeProps) {
   const { connection } = useConnection();
   const { publicKey, connected, sendTransaction } = useWallet();
@@ -189,16 +197,26 @@ export function IncidentResponseMode({ holdingsState }: IncidentResponseModeProp
     let freezeAuthorityRotations = 0;
     let solSweepLamports = 0;
     let skippedExternalCloseAuthorities = 0;
+    let skippedFrozenDelegateAccounts = 0;
 
     if (operations.revokeDelegates) {
       const revokeInstructions = holdings.tokenAccounts
-        .filter((account) => Boolean(account.delegate))
+        .filter((account) => {
+          if (!account.delegate) {
+            return false;
+          }
+          if (account.accountState === "frozen") {
+            skippedFrozenDelegateAccounts += 1;
+            return false;
+          }
+          return true;
+        })
         .map((account) =>
           createRevokeInstruction(
             new PublicKey(account.account),
             publicKey,
             [],
-            TOKEN_PROGRAM_ID
+            getTokenProgramIdForAccount(account.tokenProgramId)
           )
         );
       delegateRevokes = revokeInstructions.length;
@@ -207,6 +225,11 @@ export function IncidentResponseMode({ holdingsState }: IncidentResponseModeProp
       );
       if (delegateRevokes === 0) {
         warnings.push("No delegate approvals found to revoke.");
+      }
+      if (skippedFrozenDelegateAccounts > 0) {
+        warnings.push(
+          `${skippedFrozenDelegateAccounts} delegated account(s) are frozen and were skipped. Thaw first, then revoke.`
+        );
       }
     }
 
@@ -220,26 +243,28 @@ export function IncidentResponseMode({ holdingsState }: IncidentResponseModeProp
           return;
         }
 
+        const tokenProgramId = getTokenProgramIdForAccount(account.tokenProgramId);
         const sourceAccount = new PublicKey(account.account);
         const mint = new PublicKey(account.mint);
         const destinationAta = getAssociatedTokenAddressSync(
           mint,
           destinationWallet,
           false,
-          TOKEN_PROGRAM_ID,
+          tokenProgramId,
           ASSOCIATED_TOKEN_PROGRAM_ID
         );
 
         const destinationAtaAddress = destinationAta.toBase58();
-        if (!createdAtaSet.has(destinationAtaAddress)) {
-          createdAtaSet.add(destinationAtaAddress);
+        const ataKey = `${destinationAtaAddress}:${tokenProgramId.toBase58()}`;
+        if (!createdAtaSet.has(ataKey)) {
+          createdAtaSet.add(ataKey);
           tokenInstructions.push(
             createAssociatedTokenAccountIdempotentInstruction(
               publicKey,
               destinationAta,
               destinationWallet,
               mint,
-              TOKEN_PROGRAM_ID,
+              tokenProgramId,
               ASSOCIATED_TOKEN_PROGRAM_ID
             )
           );
@@ -254,15 +279,15 @@ export function IncidentResponseMode({ holdingsState }: IncidentResponseModeProp
             amount,
             account.decimals,
             [],
-            TOKEN_PROGRAM_ID
+            tokenProgramId
           )
         );
         tokenSweeps += 1;
       });
 
-      batches.push(...chunkInstructions("Sweep SPL Tokens", tokenInstructions, 6));
+      batches.push(...chunkInstructions("Sweep Tokens", tokenInstructions, 6));
       if (tokenSweeps === 0) {
-        warnings.push("No non-zero SPL token balances found to sweep.");
+        warnings.push("No non-zero token balances found to sweep.");
       }
     }
 
@@ -283,7 +308,7 @@ export function IncidentResponseMode({ holdingsState }: IncidentResponseModeProp
             AuthorityType.CloseAccount,
             destinationWallet,
             [],
-            TOKEN_PROGRAM_ID
+            getTokenProgramIdForAccount(account.tokenProgramId)
           )
         );
         closeAuthorityRotations += 1;
@@ -321,7 +346,12 @@ export function IncidentResponseMode({ holdingsState }: IncidentResponseModeProp
           if (!info || info.data.length < 82) {
             return;
           }
-          if (!info.owner.equals(TOKEN_PROGRAM_ID)) {
+          const tokenProgramId = info.owner.equals(TOKEN_2022_PROGRAM_ID)
+            ? TOKEN_2022_PROGRAM_ID
+            : info.owner.equals(TOKEN_PROGRAM_ID)
+              ? TOKEN_PROGRAM_ID
+              : null;
+          if (!tokenProgramId) {
             return;
           }
 
@@ -349,7 +379,7 @@ export function IncidentResponseMode({ holdingsState }: IncidentResponseModeProp
                 AuthorityType.MintTokens,
                 destinationWallet,
                 [],
-                TOKEN_PROGRAM_ID
+                tokenProgramId
               )
             );
             mintAuthorityRotations += 1;
@@ -363,7 +393,7 @@ export function IncidentResponseMode({ holdingsState }: IncidentResponseModeProp
                 AuthorityType.FreezeAccount,
                 destinationWallet,
                 [],
-                TOKEN_PROGRAM_ID
+                tokenProgramId
               )
             );
             freezeAuthorityRotations += 1;

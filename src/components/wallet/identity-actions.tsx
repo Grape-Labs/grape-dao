@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import {
   ASSOCIATED_TOKEN_PROGRAM_ID,
@@ -82,8 +82,16 @@ type SimulationPreview = {
   logs: string[];
   error: string | null;
 };
+type PreflightFailureHint = {
+  id: string;
+  title: string;
+  evidence: string;
+  fixSteps: string[];
+};
 
 const TOKEN_METADATA_PROGRAM_ID = new PublicKey(MPL_TOKEN_METADATA_PROGRAM_ID);
+const IDENTITY_MEDIA_PREF_STORAGE_KEY = "grapehub.identity.media.enabled";
+const IDENTITY_MEDIA_PREF_EVENT = "grapehub:identity-media-preference";
 
 const PROGRAM_LABELS: Record<string, string> = {
   [SystemProgram.programId.toBase58()]: "System Program",
@@ -170,6 +178,175 @@ function formatSimulationError(value: unknown) {
   return JSON.stringify(value);
 }
 
+function resolveMetadataUri(uri: string) {
+  const normalized = uri.replace(/\0/g, "").trim();
+  if (!normalized) {
+    return "";
+  }
+  if (normalized.startsWith("ipfs://")) {
+    return `https://ipfs.io/ipfs/${normalized.slice("ipfs://".length)}`;
+  }
+  return normalized;
+}
+
+function buildTokenImageProxyUrl(source: string, enabled: boolean) {
+  if (!enabled) {
+    return null;
+  }
+  const resolved = resolveMetadataUri(source);
+  if (!resolved) {
+    return null;
+  }
+  return `/api/media/token-image?url=${encodeURIComponent(resolved)}`;
+}
+
+function formatUiAmount(value: number, decimals = 9) {
+  if (!Number.isFinite(value) || value <= 0) {
+    return "0";
+  }
+  return value
+    .toLocaleString("en-US", {
+      useGrouping: false,
+      minimumFractionDigits: 0,
+      maximumFractionDigits: decimals
+    })
+    .replace(/\.?0+$/, "");
+}
+
+function decodePreflightFailure(
+  error: string | null,
+  logs: string[],
+  instructions: DecodedInstruction[]
+): PreflightFailureHint[] {
+  if (!error) {
+    return [];
+  }
+
+  const joinedLogs = logs.join("\n");
+  const combined = `${error}\n${joinedLogs}`;
+  const normalized = combined.toLowerCase();
+  const hints: PreflightFailureHint[] = [];
+
+  const addHint = (hint: PreflightFailureHint) => {
+    if (hints.some((existing) => existing.id === hint.id)) {
+      return;
+    }
+    hints.push(hint);
+  };
+  const findEvidence = (pattern: RegExp, fallback: string) => {
+    const match = combined.match(pattern);
+    return match?.[0] || fallback;
+  };
+  const hasTokenProgram = instructions.some(
+    (instruction) => instruction.programId === TOKEN_PROGRAM_ID.toBase58()
+  );
+
+  if (/account is frozen|custom program error:\s*0x11/i.test(combined)) {
+    addHint({
+      id: "frozen-account",
+      title: "Frozen Token Account",
+      evidence: findEvidence(
+        /account is frozen|custom program error:\s*0x11/i,
+        "Token program rejected instruction because account is frozen."
+      ),
+      fixSteps: [
+        "Thaw the token account with the mint freeze authority.",
+        "Run revoke/transfer again after thaw completes.",
+        "If freeze authority is external, coordinate with that authority first."
+      ]
+    });
+  }
+
+  const ataMismatchPattern =
+    /associated token account|invalid associated token|address does not match seed derivation|provided owner is not allowed/i;
+  if (ataMismatchPattern.test(combined)) {
+    addHint({
+      id: "ata-mismatch",
+      title: "Associated Token Account (ATA) Mismatch",
+      evidence: findEvidence(
+        ataMismatchPattern,
+        "Associated token account constraints failed."
+      ),
+      fixSteps: [
+        "Re-derive destination ATA from exact owner + mint + token program.",
+        "Create ATA idempotently before transfer when destination account is missing.",
+        "Do not reuse Token ATA derivation for Token-2022 accounts."
+      ]
+    });
+  }
+
+  const mentionsToken = normalized.includes("tokenkegqfezyinwajbnbgkpfxcwubvbf9ss623vq5da");
+  const mentionsToken2022 = normalized.includes("tokenzq");
+  const wrongTokenProgramPattern =
+    /incorrect program id for instruction|invalid account owner for instruction|owner does not match|incorrectprogramid/i;
+  if ((mentionsToken && mentionsToken2022) || wrongTokenProgramPattern.test(combined)) {
+    addHint({
+      id: "wrong-token-program",
+      title: "Wrong Token Program Selected",
+      evidence: findEvidence(
+        wrongTokenProgramPattern,
+        "Instruction likely mixed Token and Token-2022 accounts/program IDs."
+      ),
+      fixSteps: [
+        "Use the source token account owner program for each token instruction.",
+        "Pass the same program to ATA derivation and ATA creation.",
+        hasTokenProgram
+          ? "If source is Token-2022, switch builders to TOKEN_2022_PROGRAM_ID."
+          : "Verify token program per account before building instructions."
+      ]
+    });
+  }
+
+  const authorityMismatchPattern =
+    /missing required signature|signature verification failed|owner does not match|custom program error:\s*0x4/i;
+  if (authorityMismatchPattern.test(combined)) {
+    addHint({
+      id: "authority-mismatch",
+      title: "Authority / Signer Mismatch",
+      evidence: findEvidence(
+        authorityMismatchPattern,
+        "Instruction signer does not match required authority."
+      ),
+      fixSteps: [
+        "Confirm connected wallet is the required authority (owner/delegate/close/mint/freeze).",
+        "For multisig authorities, include all required signer accounts.",
+        "Check that account owner and authority fields were not rotated to another wallet."
+      ]
+    });
+  }
+
+  if (/allocate: account .* already in use|already in use/i.test(combined)) {
+    addHint({
+      id: "account-already-in-use",
+      title: "PDA or Account Already Exists",
+      evidence: findEvidence(
+        /allocate: account .* already in use|already in use/i,
+        "System allocate failed because target account already exists."
+      ),
+      fixSteps: [
+        "Use a new unique seed/index when deriving the account PDA.",
+        "For claim flows, avoid reusing the same (distributor, claimant, index) tuple.",
+        "If close is allowed, close the existing record first, then retry."
+      ]
+    });
+  }
+
+  if (hints.length === 0) {
+    addHint({
+      id: "generic",
+      title: "Unclassified Preflight Failure",
+      evidence: error,
+      fixSteps: [
+        "Inspect runtime logs to locate first failing program invocation.",
+        "Verify account ownership, signer set, and program IDs for that instruction.",
+        "Re-run with a smaller transaction to isolate the failing instruction."
+      ]
+    });
+  }
+
+  return hints;
+}
+
 export function IdentityActions({ holdingsState }: IdentityActionsProps) {
   const { connection } = useConnection();
   const { publicKey, connected, sendTransaction } = useWallet();
@@ -194,6 +371,7 @@ export function IdentityActions({ holdingsState }: IdentityActionsProps) {
 
   const [closeSourceAccount, setCloseSourceAccount] = useState("");
   const [metaplexSourceAccount, setMetaplexSourceAccount] = useState("");
+  const [isMediaEnabled, setIsMediaEnabled] = useState(false);
 
   const positiveAccounts = useMemo(
     () => holdings.tokenAccounts.filter((account) => !account.isZeroBalance),
@@ -233,6 +411,48 @@ export function IdentityActions({ holdingsState }: IdentityActionsProps) {
       ),
     [metaplexNftCandidates, metaplexSourceAccount]
   );
+  const availableSol = holdings.sol;
+  const halfSol = useMemo(() => formatUiAmount(availableSol / 2), [availableSol]);
+  const maxSol = useMemo(() => formatUiAmount(availableSol), [availableSol]);
+  const preflightFailureHints = useMemo(
+    () =>
+      simulationPreview
+        ? decodePreflightFailure(
+            simulationPreview.error,
+            simulationPreview.logs,
+            simulationPreview.instructions
+          )
+        : [],
+    [simulationPreview]
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const readPreference = () => {
+      const storedPreference = window.localStorage.getItem(
+        IDENTITY_MEDIA_PREF_STORAGE_KEY
+      );
+      setIsMediaEnabled(storedPreference === "true");
+    };
+    readPreference();
+
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === IDENTITY_MEDIA_PREF_STORAGE_KEY) {
+        readPreference();
+      }
+    };
+    const onPreferenceEvent = () => {
+      readPreference();
+    };
+    window.addEventListener("storage", onStorage);
+    window.addEventListener(IDENTITY_MEDIA_PREF_EVENT, onPreferenceEvent);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener(IDENTITY_MEDIA_PREF_EVENT, onPreferenceEvent);
+    };
+  }, []);
 
   async function executePreparedAction(preparedAction: PreparedAction) {
     if (!connected || !publicKey || !sendTransaction) {
@@ -682,6 +902,36 @@ export function IdentityActions({ holdingsState }: IdentityActionsProps) {
                 onChange={(event) => setSolAmount(event.target.value)}
                 fullWidth
               />
+              <Stack
+                direction={{ xs: "column", sm: "row" }}
+                spacing={0.7}
+                alignItems={{ sm: "center" }}
+                justifyContent="space-between"
+                useFlexGap
+                flexWrap="wrap"
+              >
+                <Typography variant="caption" color="text.secondary">
+                  Available: {formatUiAmount(availableSol)} SOL
+                </Typography>
+                <Stack direction="row" spacing={0.6}>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onClick={() => setSolAmount(halfSol)}
+                    disabled={availableSol <= 0}
+                  >
+                    Half
+                  </Button>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onClick={() => setSolAmount(maxSol)}
+                    disabled={availableSol <= 0}
+                  >
+                    Max
+                  </Button>
+                </Stack>
+              </Stack>
             </Stack>
           ) : null}
 
@@ -697,10 +947,37 @@ export function IdentityActions({ holdingsState }: IdentityActionsProps) {
               >
                 {positiveAccounts.map((account) => (
                   <MenuItem key={account.account} value={account.account}>
-                    {getTokenMetadata(account.mint)?.symbol ||
-                      shortenAddress(account.mint)}{" "}
-                    | {account.amountLabel} |{" "}
-                    {shortenAddress(account.account)}
+                    <Stack direction="row" spacing={0.8} alignItems="center" sx={{ minWidth: 0 }}>
+                      {buildTokenImageProxyUrl(
+                        getTokenMetadata(account.mint)?.logoURI || "",
+                        isMediaEnabled
+                      ) ? (
+                        <Box
+                          component="img"
+                          src={
+                            buildTokenImageProxyUrl(
+                              getTokenMetadata(account.mint)?.logoURI || "",
+                              isMediaEnabled
+                            ) || ""
+                          }
+                          alt={getTokenMetadata(account.mint)?.symbol || "Token"}
+                          sx={{
+                            width: 20,
+                            height: 20,
+                            borderRadius: 0.6,
+                            border: "1px solid",
+                            borderColor: "divider",
+                            objectFit: "cover",
+                            flexShrink: 0
+                          }}
+                        />
+                      ) : null}
+                      <Typography variant="body2" sx={{ minWidth: 0 }}>
+                        {getTokenMetadata(account.mint)?.symbol ||
+                          shortenAddress(account.mint)}{" "}
+                        | {account.amountLabel} | {shortenAddress(account.account)}
+                      </Typography>
+                    </Stack>
                   </MenuItem>
                 ))}
               </TextField>
@@ -733,10 +1010,37 @@ export function IdentityActions({ holdingsState }: IdentityActionsProps) {
               >
                 {positiveAccounts.map((account) => (
                   <MenuItem key={account.account} value={account.account}>
-                    {getTokenMetadata(account.mint)?.symbol ||
-                      shortenAddress(account.mint)}{" "}
-                    | {account.amountLabel} |{" "}
-                    {shortenAddress(account.account)}
+                    <Stack direction="row" spacing={0.8} alignItems="center" sx={{ minWidth: 0 }}>
+                      {buildTokenImageProxyUrl(
+                        getTokenMetadata(account.mint)?.logoURI || "",
+                        isMediaEnabled
+                      ) ? (
+                        <Box
+                          component="img"
+                          src={
+                            buildTokenImageProxyUrl(
+                              getTokenMetadata(account.mint)?.logoURI || "",
+                              isMediaEnabled
+                            ) || ""
+                          }
+                          alt={getTokenMetadata(account.mint)?.symbol || "Token"}
+                          sx={{
+                            width: 20,
+                            height: 20,
+                            borderRadius: 0.6,
+                            border: "1px solid",
+                            borderColor: "divider",
+                            objectFit: "cover",
+                            flexShrink: 0
+                          }}
+                        />
+                      ) : null}
+                      <Typography variant="body2" sx={{ minWidth: 0 }}>
+                        {getTokenMetadata(account.mint)?.symbol ||
+                          shortenAddress(account.mint)}{" "}
+                        | {account.amountLabel} | {shortenAddress(account.account)}
+                      </Typography>
+                    </Stack>
                   </MenuItem>
                 ))}
               </TextField>
@@ -762,9 +1066,37 @@ export function IdentityActions({ holdingsState }: IdentityActionsProps) {
               >
                 {closeableAccounts.map((account) => (
                   <MenuItem key={account.account} value={account.account}>
-                    {getTokenMetadata(account.mint)?.symbol ||
-                      shortenAddress(account.mint)}{" "}
-                    | {shortenAddress(account.account)}
+                    <Stack direction="row" spacing={0.8} alignItems="center" sx={{ minWidth: 0 }}>
+                      {buildTokenImageProxyUrl(
+                        getTokenMetadata(account.mint)?.logoURI || "",
+                        isMediaEnabled
+                      ) ? (
+                        <Box
+                          component="img"
+                          src={
+                            buildTokenImageProxyUrl(
+                              getTokenMetadata(account.mint)?.logoURI || "",
+                              isMediaEnabled
+                            ) || ""
+                          }
+                          alt={getTokenMetadata(account.mint)?.symbol || "Token"}
+                          sx={{
+                            width: 20,
+                            height: 20,
+                            borderRadius: 0.6,
+                            border: "1px solid",
+                            borderColor: "divider",
+                            objectFit: "cover",
+                            flexShrink: 0
+                          }}
+                        />
+                      ) : null}
+                      <Typography variant="body2" sx={{ minWidth: 0 }}>
+                        {getTokenMetadata(account.mint)?.symbol ||
+                          shortenAddress(account.mint)}{" "}
+                        | {shortenAddress(account.account)}
+                      </Typography>
+                    </Stack>
                   </MenuItem>
                 ))}
               </TextField>
@@ -791,9 +1123,37 @@ export function IdentityActions({ holdingsState }: IdentityActionsProps) {
                 ) : (
                   metaplexNftCandidates.map((account) => (
                     <MenuItem key={account.account} value={account.account}>
-                      {getTokenMetadata(account.mint)?.symbol ||
-                        shortenAddress(account.mint)}{" "}
-                      | {shortenAddress(account.account)}
+                      <Stack direction="row" spacing={0.8} alignItems="center" sx={{ minWidth: 0 }}>
+                        {buildTokenImageProxyUrl(
+                          getTokenMetadata(account.mint)?.logoURI || "",
+                          isMediaEnabled
+                        ) ? (
+                          <Box
+                            component="img"
+                            src={
+                              buildTokenImageProxyUrl(
+                                getTokenMetadata(account.mint)?.logoURI || "",
+                                isMediaEnabled
+                              ) || ""
+                            }
+                            alt={getTokenMetadata(account.mint)?.symbol || "NFT"}
+                            sx={{
+                              width: 20,
+                              height: 20,
+                              borderRadius: 0.6,
+                              border: "1px solid",
+                              borderColor: "divider",
+                              objectFit: "cover",
+                              flexShrink: 0
+                            }}
+                          />
+                        ) : null}
+                        <Typography variant="body2" sx={{ minWidth: 0 }}>
+                          {getTokenMetadata(account.mint)?.symbol ||
+                            shortenAddress(account.mint)}{" "}
+                          | {shortenAddress(account.account)}
+                        </Typography>
+                      </Stack>
                     </MenuItem>
                   ))
                 )}
@@ -872,6 +1232,52 @@ export function IdentityActions({ holdingsState }: IdentityActionsProps) {
                       Simulation completed with no runtime error.
                     </Alert>
                   )}
+
+                  {simulationPreview.error && preflightFailureHints.length > 0 ? (
+                    <Card variant="outlined" sx={{ borderRadius: 1.25 }}>
+                      <CardContent sx={{ p: 1 }}>
+                        <Stack spacing={0.75}>
+                          <Typography variant="caption" color="text.secondary">
+                            Preflight Failure Decoder
+                          </Typography>
+                          {preflightFailureHints.map((hint) => (
+                            <Box
+                              key={hint.id}
+                              sx={{
+                                p: 0.75,
+                                border: "1px solid",
+                                borderColor: "divider",
+                                borderRadius: 1
+                              }}
+                            >
+                              <Typography variant="caption" sx={{ fontWeight: 600 }}>
+                                {hint.title}
+                              </Typography>
+                              <Typography
+                                variant="caption"
+                                display="block"
+                                color="text.secondary"
+                                sx={{ mt: 0.2 }}
+                              >
+                                Evidence: {hint.evidence}
+                              </Typography>
+                              <Box sx={{ mt: 0.45, display: "grid", gap: 0.2 }}>
+                                {hint.fixSteps.map((step, index) => (
+                                  <Typography
+                                    key={`${hint.id}-step-${index}`}
+                                    variant="caption"
+                                    display="block"
+                                  >
+                                    {index + 1}. {step}
+                                  </Typography>
+                                ))}
+                              </Box>
+                            </Box>
+                          ))}
+                        </Stack>
+                      </CardContent>
+                    </Card>
+                  ) : null}
 
                   <Divider />
 
