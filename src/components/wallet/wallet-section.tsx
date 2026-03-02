@@ -266,7 +266,7 @@ export function WalletSection({
               </Box>
 
               <WalletConnectControl
-                connectText="Connect Identity"
+                connectText="Connect"
                 showSecurityPolicySettings
               />
 
