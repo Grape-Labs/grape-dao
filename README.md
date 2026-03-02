@@ -188,6 +188,8 @@ npm run power:cli -- sweep-plan --owner <PUBKEY> --safe-wallet <PUBKEY> --reserv
 - Optional:
   - `NEXT_PUBLIC_SOLANA_DEFAULT_RPC_URL`
     - Overrides default RPC endpoint at build/runtime
+  - `NEXT_HELIUS_API_KEY`
+    - Enables server-side Helius enhanced transaction lookups used by Signature Decoder
 - RPC selection is also persisted in browser local storage.
 
 ### Irys Upload (Token Metadata)

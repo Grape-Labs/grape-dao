@@ -45,6 +45,19 @@ type DecodeResult = {
   logs: string[];
   simulationError: string | null;
   riskFlags: string[];
+  heliusSummary: HeliusEnhancedSummary | null;
+  heliusStatus: string | null;
+};
+
+type HeliusEnhancedSummary = {
+  description: string | null;
+  type: string | null;
+  source: string | null;
+  feeLamports: number | null;
+  slot: number | null;
+  timestamp: number | null;
+  nativeTransferCount: number;
+  tokenTransferCount: number;
 };
 
 const PROGRAM_LABELS: Record<string, string> = {
@@ -88,6 +101,52 @@ function inferRiskFlags(instructions: DecodedInstruction[], logs: string[], simu
     flags.push("Execution logs indicate a failing program path.");
   }
   return Array.from(new Set(flags));
+}
+
+function asRecord(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
+
+function asString(value: unknown) {
+  return typeof value === "string" ? value : null;
+}
+
+function asNumber(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function parseHeliusSummary(transaction: unknown): HeliusEnhancedSummary | null {
+  const record = asRecord(transaction);
+  if (!record) {
+    return null;
+  }
+  const nativeTransfers = Array.isArray(record.nativeTransfers)
+    ? record.nativeTransfers
+    : [];
+  const tokenTransfers = Array.isArray(record.tokenTransfers)
+    ? record.tokenTransfers
+    : [];
+
+  return {
+    description: asString(record.description),
+    type: asString(record.type),
+    source: asString(record.source),
+    feeLamports: asNumber(record.fee),
+    slot: asNumber(record.slot),
+    timestamp: asNumber(record.timestamp),
+    nativeTransferCount: nativeTransfers.length,
+    tokenTransferCount: tokenTransfers.length
+  };
+}
+
+function formatUnixTimestamp(timestamp: number | null) {
+  if (!timestamp || !Number.isFinite(timestamp)) {
+    return "n/a";
+  }
+  return new Date(timestamp * 1000).toISOString();
 }
 
 export function SignatureDecoder() {
@@ -150,13 +209,40 @@ export function SignatureDecoder() {
         : null;
       const logs = transaction.meta?.logMessages ?? [];
       const riskFlags = inferRiskFlags(instructions, logs, simulationError);
+      let heliusSummary: HeliusEnhancedSummary | null = null;
+      let heliusStatus: string | null = null;
+
+      try {
+        const heliusResponse = await fetch(
+          `/api/helius/transactions?signature=${encodeURIComponent(signature)}`,
+          {
+            method: "GET",
+            cache: "no-store"
+          }
+        );
+        const heliusPayload = (await heliusResponse.json()) as unknown;
+        const heliusRecord = asRecord(heliusPayload);
+        if (heliusResponse.ok && heliusRecord?.ok === true) {
+          heliusSummary = parseHeliusSummary(heliusRecord.transaction);
+          heliusStatus = heliusSummary
+            ? null
+            : "Helius returned no enhanced transaction for this signature.";
+        } else {
+          const errorMessage = asString(heliusRecord?.error);
+          heliusStatus = errorMessage || "Helius enrichment unavailable.";
+        }
+      } catch {
+        heliusStatus = "Helius enrichment unavailable.";
+      }
 
       setResult({
         title: `Decoded Signature ${signature}`,
         instructions,
         logs,
         simulationError,
-        riskFlags
+        riskFlags,
+        heliusSummary,
+        heliusStatus
       });
       setStatus({
         severity: "success",
@@ -240,7 +326,9 @@ export function SignatureDecoder() {
         instructions: decodedInstructions,
         logs,
         simulationError,
-        riskFlags
+        riskFlags,
+        heliusSummary: null,
+        heliusStatus: null
       });
       setStatus({
         severity: "success",
@@ -322,6 +410,54 @@ export function SignatureDecoder() {
                   color={result.riskFlags.length > 0 ? "warning" : "default"}
                 />
               </Stack>
+
+              {result.heliusSummary ? (
+                <Card variant="outlined" sx={{ borderRadius: 1.4 }}>
+                  <CardContent sx={{ p: "10px !important" }}>
+                    <Stack spacing={0.45}>
+                      <Typography variant="body2">Helius Enhanced Transaction</Typography>
+                      <Stack direction={{ xs: "column", sm: "row" }} spacing={0.8} useFlexGap flexWrap="wrap">
+                        <Chip
+                          size="small"
+                          variant="outlined"
+                          label={`Type: ${result.heliusSummary.type || "n/a"}`}
+                        />
+                        <Chip
+                          size="small"
+                          variant="outlined"
+                          label={`Source: ${result.heliusSummary.source || "n/a"}`}
+                        />
+                        <Chip
+                          size="small"
+                          variant="outlined"
+                          label={`Native Transfers: ${result.heliusSummary.nativeTransferCount}`}
+                        />
+                        <Chip
+                          size="small"
+                          variant="outlined"
+                          label={`Token Transfers: ${result.heliusSummary.tokenTransferCount}`}
+                        />
+                      </Stack>
+                      <Typography variant="caption" color="text.secondary">
+                        Fee (lamports): {result.heliusSummary.feeLamports ?? "n/a"} | Slot:{" "}
+                        {result.heliusSummary.slot ?? "n/a"}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        Timestamp: {formatUnixTimestamp(result.heliusSummary.timestamp)}
+                      </Typography>
+                      {result.heliusSummary.description ? (
+                        <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: "pre-wrap" }}>
+                          {result.heliusSummary.description}
+                        </Typography>
+                      ) : null}
+                    </Stack>
+                  </CardContent>
+                </Card>
+              ) : null}
+
+              {result.heliusStatus ? (
+                <Alert severity="info">{result.heliusStatus}</Alert>
+              ) : null}
 
               {result.simulationError ? (
                 <Alert severity="warning">{result.simulationError}</Alert>
