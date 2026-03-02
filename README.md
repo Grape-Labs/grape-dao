@@ -100,7 +100,7 @@ Before execution, users can simulate and inspect:
 
 - Local/team label registry for wallets, delegates, programs, validators, mints, and safe destinations
 - Export/import JSON for shared operational context
-- Label-aware integrations in incident response, delegate explorer, claim flow, and action-link builder
+- Label-aware integrations in incident response, delegate explorer, and claim flow
 
 ### Claim Round Manager
 
