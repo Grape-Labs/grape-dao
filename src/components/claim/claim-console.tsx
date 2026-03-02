@@ -17,11 +17,14 @@ import {
   CardContent,
   Chip,
   CircularProgress,
+  MenuItem,
   Stack,
   TextField,
   Typography
 } from "@mui/material";
 import { WalletConnectControl } from "@/components/wallet/wallet-connect-control";
+import { useAddressBook } from "@/hooks/use-address-book";
+import { useClaimRounds } from "@/hooks/use-claim-rounds";
 
 type ClaimStatusState = {
   severity: "success" | "error" | "info";
@@ -326,6 +329,7 @@ export function ClaimConsole() {
   const { connection } = useConnection();
   const { connected, publicKey, sendTransaction } = useWallet();
   const [queryManifestUrl, setQueryManifestUrl] = useState("");
+  const [selectedRoundId, setSelectedRoundId] = useState("");
   const [isChecking, setIsChecking] = useState(false);
   const [isClaimingId, setIsClaimingId] = useState<string | null>(null);
   const [claims, setClaims] = useState<EligibleClaim[]>([]);
@@ -334,10 +338,16 @@ export function ClaimConsole() {
   );
   const [status, setStatus] = useState<ClaimStatusState>(null);
   const [lastCheckedAt, setLastCheckedAt] = useState<string | null>(null);
+  const { getLabel } = useAddressBook();
+  const { rounds } = useClaimRounds();
 
   const envManifestUrl = process.env.NEXT_PUBLIC_GRAPE_CLAIMS_MANIFEST_URL || "";
   const manifestUrl = queryManifestUrl || envManifestUrl;
   const isFallbackManifestSource = !queryManifestUrl && !envManifestUrl;
+  const claimRoundOptions = useMemo(
+    () => rounds.filter((round) => Boolean(round.manifestUrl)),
+    [rounds]
+  );
   const distributorClient = useMemo(
     () => new GrapeDistributorClient(connection),
     [connection]
@@ -605,10 +615,32 @@ export function ClaimConsole() {
             Claim source: {manifestUrl || "Not set"}
           </Typography>
           <TextField
+            select
+            size="small"
+            label="Claim Round (optional)"
+            value={selectedRoundId}
+            onChange={(event) => {
+              const nextRoundId = event.target.value;
+              setSelectedRoundId(nextRoundId);
+              const selectedRound = claimRoundOptions.find(
+                (round) => round.id === nextRoundId
+              );
+              setQueryManifestUrl(selectedRound?.manifestUrl || "");
+            }}
+          >
+            <MenuItem value="">None</MenuItem>
+            {claimRoundOptions.map((round) => (
+              <MenuItem key={round.id} value={round.id}>
+                {round.name} ({shortenAddress(round.distributor)})
+              </MenuItem>
+            ))}
+          </TextField>
+          <TextField
             size="small"
             label="Claim Manifest URL"
             value={queryManifestUrl}
             onChange={(event) => {
+              setSelectedRoundId("");
               setQueryManifestUrl(event.target.value.trim());
             }}
             placeholder="https://gateway.irys.xyz/..."
@@ -705,6 +737,26 @@ export function ClaimConsole() {
                         color="text.secondary"
                         sx={{ fontFamily: "var(--font-mono), monospace", wordBreak: "break-all" }}
                       >
+                        Distributor:{" "}
+                        {getLabel(entry.distributor.toBase58())
+                          ? `${getLabel(entry.distributor.toBase58())} (${entry.distributor.toBase58()})`
+                          : entry.distributor.toBase58()}
+                      </Typography>
+                      <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        sx={{ fontFamily: "var(--font-mono), monospace", wordBreak: "break-all" }}
+                      >
+                        Vault:{" "}
+                        {getLabel(entry.vault.toBase58())
+                          ? `${getLabel(entry.vault.toBase58())} (${entry.vault.toBase58()})`
+                          : entry.vault.toBase58()}
+                      </Typography>
+                      <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        sx={{ fontFamily: "var(--font-mono), monospace", wordBreak: "break-all" }}
+                      >
                         {(() => {
                           const decimals = mintDecimalsByMint[entry.mint.toBase58()];
                           if (typeof decimals === "number") {
@@ -728,7 +780,10 @@ export function ClaimConsole() {
                             wordBreak: "break-all"
                           }}
                         >
-                          Realm Deposit: {entry.realm.toBase58()}
+                          Realm Deposit:{" "}
+                          {getLabel(entry.realm.toBase58())
+                            ? `${getLabel(entry.realm.toBase58())} (${entry.realm.toBase58()})`
+                            : entry.realm.toBase58()}
                         </Typography>
                       ) : null}
                       <Typography

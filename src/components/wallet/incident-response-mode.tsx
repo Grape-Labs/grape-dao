@@ -30,10 +30,12 @@ import {
   Checkbox,
   Chip,
   FormControlLabel,
+  MenuItem,
   Stack,
   TextField,
   Typography
 } from "@mui/material";
+import { useAddressBook } from "@/hooks/use-address-book";
 import type { WalletHoldingsState } from "@/hooks/use-wallet-holdings";
 
 type IncidentResponseModeProps = {
@@ -163,6 +165,7 @@ export function IncidentResponseMode({ holdingsState }: IncidentResponseModeProp
   const { connection } = useConnection();
   const { publicKey, connected, sendTransaction } = useWallet();
   const { holdings, refresh } = holdingsState;
+  const { entries, getLabel } = useAddressBook();
 
   const [safeWalletAddress, setSafeWalletAddress] = useState("");
   const [solReserve, setSolReserve] = useState("0.02");
@@ -180,6 +183,22 @@ export function IncidentResponseMode({ holdingsState }: IncidentResponseModeProp
   );
 
   const hasInputReady = connected && safeWalletAddress.trim().length > 0;
+  const safeWalletLabel = useMemo(() => {
+    if (!safeWalletAddress.trim()) {
+      return null;
+    }
+    return getLabel(safeWalletAddress.trim());
+  }, [getLabel, safeWalletAddress]);
+  const safeDestinationOptions = useMemo(
+    () =>
+      entries.filter(
+        (entry) =>
+          entry.type === "safe-destination" ||
+          entry.type === "wallet" ||
+          entry.type === "dao"
+      ),
+    [entries]
+  );
 
   useEffect(() => {
     const action = searchParams.get("action")?.trim().toLowerCase();
@@ -654,8 +673,32 @@ export function IncidentResponseMode({ holdingsState }: IncidentResponseModeProp
             placeholder="Safe wallet public key"
             value={safeWalletAddress}
             onChange={(event) => setSafeWalletAddress(event.target.value)}
+            helperText={
+              safeWalletLabel
+                ? `Resolved label: ${safeWalletLabel}`
+                : "Tip: add safe wallets in Address Book and select quickly below."
+            }
             fullWidth
           />
+          {safeDestinationOptions.length > 0 ? (
+            <TextField
+              select
+              size="small"
+              label="Select labeled safe destination"
+              value=""
+              onChange={(event) => {
+                if (event.target.value) {
+                  setSafeWalletAddress(event.target.value);
+                }
+              }}
+            >
+              {safeDestinationOptions.map((entry) => (
+                <MenuItem key={entry.address} value={entry.address}>
+                  {entry.label} ({shortenAddress(entry.address)})
+                </MenuItem>
+              ))}
+            </TextField>
+          ) : null}
 
           <TextField
             size="small"

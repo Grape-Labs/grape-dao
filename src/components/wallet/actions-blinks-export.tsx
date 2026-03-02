@@ -7,10 +7,13 @@ import {
   Button,
   Card,
   CardContent,
+  MenuItem,
   Stack,
   TextField,
   Typography
 } from "@mui/material";
+import { shortenAddress, useAddressBook } from "@/hooks/use-address-book";
+import { useClaimRounds } from "@/hooks/use-claim-rounds";
 
 type ActionsBlinksExportProps = {
   defaultBaseOrigin?: string;
@@ -46,8 +49,11 @@ function toNumberString(value: string, fallback: string) {
 export function ActionsBlinksExport({
   defaultBaseOrigin
 }: ActionsBlinksExportProps) {
+  const { entries, getLabel } = useAddressBook();
+  const { rounds } = useClaimRounds();
   const [runtimeOrigin, setRuntimeOrigin] = useState("");
   const [status, setStatus] = useState<ExportStatus>(null);
+  const [selectedRoundId, setSelectedRoundId] = useState("");
   const [claimManifestUrl, setClaimManifestUrl] = useState("");
   const [sweepSafeWallet, setSweepSafeWallet] = useState("");
   const [sweepReserveSol, setSweepReserveSol] = useState("0.02");
@@ -61,6 +67,20 @@ export function ActionsBlinksExport({
 
   const baseOrigin =
     runtimeOrigin || defaultBaseOrigin || FALLBACK_BASE_ORIGIN;
+  const safeDestinationOptions = useMemo(
+    () =>
+      entries.filter(
+        (entry) =>
+          entry.type === "safe-destination" ||
+          entry.type === "wallet" ||
+          entry.type === "dao"
+      ),
+    [entries]
+  );
+  const claimRoundOptions = useMemo(
+    () => rounds.filter((round) => Boolean(round.manifestUrl)),
+    [rounds]
+  );
 
   const links = useMemo<ExportLinkItem[]>(() => {
     const claimUrl = claimManifestUrl.trim()
@@ -141,6 +161,28 @@ export function ActionsBlinksExport({
           </Typography>
 
           <TextField
+            select
+            size="small"
+            label="Claim Round (optional)"
+            value={selectedRoundId}
+            onChange={(event) => {
+              const nextRoundId = event.target.value;
+              setSelectedRoundId(nextRoundId);
+              const selectedRound = claimRoundOptions.find(
+                (round) => round.id === nextRoundId
+              );
+              setClaimManifestUrl(selectedRound?.manifestUrl || "");
+            }}
+            fullWidth
+          >
+            <MenuItem value="">None</MenuItem>
+            {claimRoundOptions.map((round) => (
+              <MenuItem key={round.id} value={round.id}>
+                {round.name} ({shortenAddress(round.distributor)})
+              </MenuItem>
+            ))}
+          </TextField>
+          <TextField
             size="small"
             label="Claim Manifest URL (optional)"
             value={claimManifestUrl}
@@ -150,10 +192,31 @@ export function ActionsBlinksExport({
           />
           <Stack direction={{ xs: "column", md: "row" }} spacing={1}>
             <TextField
+              select
+              size="small"
+              label="Labeled Safe Wallet (optional)"
+              value=""
+              onChange={(event) => {
+                const value = event.target.value.trim();
+                if (value) {
+                  setSweepSafeWallet(value);
+                }
+              }}
+              fullWidth
+            >
+              <MenuItem value="">None</MenuItem>
+              {safeDestinationOptions.map((entry) => (
+                <MenuItem key={entry.address} value={entry.address}>
+                  {entry.label} ({shortenAddress(entry.address)})
+                </MenuItem>
+              ))}
+            </TextField>
+            <TextField
               size="small"
               label="Sweep Safe Wallet (optional)"
               value={sweepSafeWallet}
               onChange={(event) => setSweepSafeWallet(event.target.value)}
+              helperText={getLabel(sweepSafeWallet) ? `Label: ${getLabel(sweepSafeWallet)}` : undefined}
               fullWidth
             />
             <TextField

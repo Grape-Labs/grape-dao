@@ -20,6 +20,7 @@ import {
   Typography
 } from "@mui/material";
 import { useRpcEndpoint } from "@/components/providers/solana-wallet-provider";
+import { useAddressBook } from "@/hooks/use-address-book";
 import type { WalletHoldingsState } from "@/hooks/use-wallet-holdings";
 
 type DelegateExplorerProps = {
@@ -103,6 +104,7 @@ function chunkArray<T>(values: T[], chunkSize: number) {
 export function DelegateExplorer({ holdingsState }: DelegateExplorerProps) {
   const { connection } = useConnection();
   const { endpoint } = useRpcEndpoint();
+  const { getLabel } = useAddressBook();
   const { holdings } = holdingsState;
 
   const [isResolving, setIsResolving] = useState(false);
@@ -325,7 +327,9 @@ export function DelegateExplorer({ holdingsState }: DelegateExplorerProps) {
                             }}
                             sx={{ textTransform: "none", px: 0 }}
                           >
-                            {group.delegate}
+                            {getLabel(group.delegate)
+                              ? `${getLabel(group.delegate)} (${shortenAddress(group.delegate)})`
+                              : group.delegate}
                           </Button>
                           <Link
                             href={toExplorerAddressUrl(group.delegate, explorerCluster)}
@@ -364,7 +368,10 @@ export function DelegateExplorer({ holdingsState }: DelegateExplorerProps) {
                             <Chip
                               size="small"
                               variant="outlined"
-                              label={`Owner: ${shortenAddress(resolution.ownerProgram)}`}
+                              label={`Owner: ${
+                                getLabel(resolution.ownerProgram) ||
+                                shortenAddress(resolution.ownerProgram)
+                              }`}
                             />
                           ) : null}
                         </Stack>
@@ -382,7 +389,10 @@ export function DelegateExplorer({ holdingsState }: DelegateExplorerProps) {
                 <Stack spacing={0.8}>
                   <Typography variant="subtitle2">Delegate Details</Typography>
                   <Typography variant="caption" sx={{ fontFamily: "var(--font-mono), monospace" }}>
-                    Delegate: {selectedGroup.delegate}
+                    Delegate:{" "}
+                    {getLabel(selectedGroup.delegate)
+                      ? `${getLabel(selectedGroup.delegate)} (${selectedGroup.delegate})`
+                      : selectedGroup.delegate}
                   </Typography>
                   <Typography variant="caption" color="text.secondary">
                     Classification: {selectedResolution?.classification || "Unresolved"}
@@ -392,7 +402,10 @@ export function DelegateExplorer({ holdingsState }: DelegateExplorerProps) {
                   </Typography>
                   {selectedResolution?.ownerProgram ? (
                     <Typography variant="caption" color="text.secondary">
-                      Owner program: {selectedResolution.ownerProgram}
+                      Owner program:{" "}
+                      {getLabel(selectedResolution.ownerProgram)
+                        ? `${getLabel(selectedResolution.ownerProgram)} (${selectedResolution.ownerProgram})`
+                        : selectedResolution.ownerProgram}
                     </Typography>
                   ) : null}
                   {selectedResolution ? (
