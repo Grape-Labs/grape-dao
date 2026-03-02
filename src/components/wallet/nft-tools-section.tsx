@@ -47,7 +47,7 @@ export function NftToolsSection() {
             </Typography>
           </Box>
 
-          <WalletConnectControl connectText="Connect Identity" />
+          <WalletConnectControl connectText="Connect" />
 
           <Accordion
             expanded={expandedSection === "operations"}

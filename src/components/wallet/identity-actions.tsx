@@ -400,6 +400,10 @@ export function IdentityActions({ holdingsState }: IdentityActionsProps) {
     () => positiveAccounts.find((account) => account.account === burnSourceAccount),
     [positiveAccounts, burnSourceAccount]
   );
+  const burnMaxAmount = useMemo(
+    () => selectedBurnSource?.amountLabel ?? "",
+    [selectedBurnSource]
+  );
   const selectedCloseSource = useMemo(
     () => closeableAccounts.find((account) => account.account === closeSourceAccount),
     [closeSourceAccount, closeableAccounts]
@@ -1051,6 +1055,26 @@ export function IdentityActions({ holdingsState }: IdentityActionsProps) {
                 onChange={(event) => setBurnAmount(event.target.value)}
                 fullWidth
               />
+              <Stack
+                direction={{ xs: "column", sm: "row" }}
+                spacing={0.7}
+                alignItems={{ sm: "center" }}
+                justifyContent="space-between"
+                useFlexGap
+                flexWrap="wrap"
+              >
+                <Typography variant="caption" color="text.secondary">
+                  Available: {selectedBurnSource ? burnMaxAmount : "Select a token account"}
+                </Typography>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  onClick={() => setBurnAmount(burnMaxAmount)}
+                  disabled={!selectedBurnSource || !burnMaxAmount || burnMaxAmount === "0"}
+                >
+                  Max
+                </Button>
+              </Stack>
             </Stack>
           ) : null}
 

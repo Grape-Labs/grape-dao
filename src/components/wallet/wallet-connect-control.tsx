@@ -2,6 +2,7 @@
 
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
+import WalletRoundedIcon from "@mui/icons-material/WalletRounded";
 import SettingsRoundedIcon from "@mui/icons-material/SettingsRounded";
 import { Button, Chip, Dialog, DialogContent, DialogTitle, IconButton, Stack, Tooltip } from "@mui/material";
 import { useState } from "react";
@@ -40,7 +41,7 @@ function inferNetworkLabel(endpoint: string) {
 }
 
 export function WalletConnectControl({
-  connectText = "Connect Identity",
+  connectText = "Connect",
   connectedLabelMode = "address",
   showDisconnect = true,
   showAdapterChip = true,
@@ -75,6 +76,7 @@ export function WalletConnectControl({
         <Button
           variant="contained"
           onClick={() => setVisible(true)}
+          startIcon={!connected ? <WalletRoundedIcon fontSize="small" /> : undefined}
           sx={{ width: { xs: "100%", sm: "auto" }, minWidth: buttonMinWidth }}
         >
           {label}
