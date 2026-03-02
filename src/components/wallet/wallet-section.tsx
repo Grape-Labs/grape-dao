@@ -17,7 +17,9 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { ActionsBlinksExport } from "@/components/wallet/actions-blinks-export";
+import { AddressBookManager } from "@/components/wallet/address-book-manager";
 import { ApprovalRiskScanner } from "@/components/wallet/approval-risk-scanner";
+import { ClaimRoundManager } from "@/components/wallet/claim-round-manager";
 import { DelegateExplorer } from "@/components/wallet/delegate-explorer";
 import { IdentityActions } from "@/components/wallet/identity-actions";
 import { JupiterSwapRouter } from "@/components/wallet/jupiter-swap-router";
@@ -48,6 +50,16 @@ export function WalletSection({
   const initialExpandedTool = useMemo(() => {
     if (initialAction === "revoke") {
       return "approval-risk";
+    }
+    if (initialAction === "labels" || initialAction === "address-book") {
+      return "address-book";
+    }
+    if (
+      initialAction === "claim-rounds" ||
+      initialAction === "rounds" ||
+      initialAction === "claim-manager"
+    ) {
+      return "claim-rounds";
     }
     if (initialAction === "sweep") {
       return "incident-response";
@@ -382,6 +394,24 @@ export function WalletSection({
               </Accordion>
 
               <Accordion
+                expanded={expandedTool === "address-book"}
+                onChange={(_event, isExpanded) => {
+                  setExpandedTool(isExpanded ? "address-book" : false);
+                }}
+                disableGutters
+                sx={{ bgcolor: "transparent", border: "1px solid", borderColor: "divider", borderRadius: "8px !important" }}
+              >
+                <AccordionSummary
+                  expandIcon={<Typography color="text.secondary">{expandedTool === "address-book" ? "−" : "+"}</Typography>}
+                >
+                  <Typography variant="subtitle2">Address Book + Labels</Typography>
+                </AccordionSummary>
+                <AccordionDetails sx={{ pt: 0.5 }}>
+                  <AddressBookManager holdingsState={holdingsState} />
+                </AccordionDetails>
+              </Accordion>
+
+              <Accordion
                 expanded={expandedTool === "delegate-explorer"}
                 onChange={(_event, isExpanded) => {
                   setExpandedTool(isExpanded ? "delegate-explorer" : false);
@@ -506,6 +536,24 @@ export function WalletSection({
                 </AccordionSummary>
                 <AccordionDetails sx={{ pt: 0.5 }}>
                   <ProgramBuffersManager />
+                </AccordionDetails>
+              </Accordion>
+
+              <Accordion
+                expanded={expandedTool === "claim-rounds"}
+                onChange={(_event, isExpanded) => {
+                  setExpandedTool(isExpanded ? "claim-rounds" : false);
+                }}
+                disableGutters
+                sx={{ bgcolor: "transparent", border: "1px solid", borderColor: "divider", borderRadius: "8px !important" }}
+              >
+                <AccordionSummary
+                  expandIcon={<Typography color="text.secondary">{expandedTool === "claim-rounds" ? "−" : "+"}</Typography>}
+                >
+                  <Typography variant="subtitle2">Claim Round Manager</Typography>
+                </AccordionSummary>
+                <AccordionDetails sx={{ pt: 0.5 }}>
+                  <ClaimRoundManager />
                 </AccordionDetails>
               </Accordion>
 

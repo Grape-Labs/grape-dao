@@ -43,6 +43,8 @@ Route: `/identity`
   - Shyft URL is intentionally hidden in visible UI state
 - Workspace tabs:
   - `Transact`
+  - `Address Book + Labels`
+  - `Claim Round Manager`
   - `Staking`
   - `Approvals`
   - `Recovery`
@@ -93,6 +95,19 @@ Before execution, users can simulate and inspect:
 - Revoke all delegates
 - Highlight suspicious close authorities
 - Includes warning + confirmation dialogs
+
+### Address Book + Labels
+
+- Local/team label registry for wallets, delegates, programs, validators, mints, and safe destinations
+- Export/import JSON for shared operational context
+- Label-aware integrations in incident response, delegate explorer, claim flow, and action-link builder
+
+### Claim Round Manager
+
+- Track round versioning with distributor/mint/vault, root history, lifecycle, and governance settings
+- Define index policy + index ranges to reduce `(distributor, claimant, index)` collision risk
+- Configure lifecycle windows (`start`, `end`, `clawback`) and generate shareable claim URLs
+- Detect overlapping index ranges per distributor and surface warnings
 
 ### Recovery (Rent Sweeper)
 
