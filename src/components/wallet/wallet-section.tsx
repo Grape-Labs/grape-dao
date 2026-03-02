@@ -16,7 +16,6 @@ import {
 } from "@mui/material";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { ActionsBlinksExport } from "@/components/wallet/actions-blinks-export";
 import { AddressBookManager } from "@/components/wallet/address-book-manager";
 import { ApprovalRiskScanner } from "@/components/wallet/approval-risk-scanner";
 import { ClaimRoundManager } from "@/components/wallet/claim-round-manager";
@@ -73,9 +72,6 @@ export function WalletSection({
       initialAction === "jupiter"
     ) {
       return enableJupiterSwapRouter ? "swap-router" : "transact";
-    }
-    if (initialAction === "actions" || initialAction === "blinks") {
-      return "actions-blinks";
     }
     return "transact";
   }, [enableJupiterSwapRouter, initialAction]);
@@ -557,23 +553,6 @@ export function WalletSection({
                 </AccordionDetails>
               </Accordion>
 
-              <Accordion
-                expanded={expandedTool === "actions-blinks"}
-                onChange={(_event, isExpanded) => {
-                  setExpandedTool(isExpanded ? "actions-blinks" : false);
-                }}
-                disableGutters
-                sx={{ bgcolor: "transparent", border: "1px solid", borderColor: "divider", borderRadius: "8px !important" }}
-              >
-                <AccordionSummary
-                  expandIcon={<Typography color="text.secondary">{expandedTool === "actions-blinks" ? "−" : "+"}</Typography>}
-                >
-                  <Typography variant="subtitle2">Actions + Blinks Export</Typography>
-                </AccordionSummary>
-                <AccordionDetails sx={{ pt: 0.5 }}>
-                  <ActionsBlinksExport />
-                </AccordionDetails>
-              </Accordion>
             </Stack>
           </Grid>
 
