@@ -269,7 +269,7 @@ export default function Home() {
                   <Chip label="Programs: 6" variant="outlined" color="secondary" />
                   <Chip label="APIs: 4" variant="outlined" color="secondary" />
                   <Chip label="Interfaces: 5" variant="outlined" color="secondary" />
-                  <Chip label="Discord Bots: 4" variant="outlined" color="secondary" />
+                  <Chip label="Discord Bots: 5" variant="outlined" color="secondary" />
                 </Stack>
               </Stack>
             </Grid>

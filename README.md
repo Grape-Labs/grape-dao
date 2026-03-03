@@ -190,7 +190,23 @@ npm run power:cli -- sweep-plan --owner <PUBKEY> --safe-wallet <PUBKEY> --reserv
     - Overrides default RPC endpoint at build/runtime
   - `NEXT_HELIUS_API_KEY`
     - Enables server-side Helius enhanced transaction lookups used by Signature Decoder
+  - `DISCORD_BOT_TOKEN`
+    - Required for Discord cron posting via bot auth
+  - `DISCORD_CHANNEL_ID`
+    - Target channel for Discord cron posting
+  - `DISCORD_CRON_MESSAGE`
+    - Optional static message override for cron posts
 - RPC selection is also persisted in browser local storage.
+
+### Discord Cron Endpoint
+
+- Endpoint: `GET /api/cron/discord`
+- Auth:
+  - If `CRON_SECRET` is set, request must include `Authorization: Bearer <CRON_SECRET>`.
+  - If `CRON_SECRET` is not set, the endpoint accepts unauthenticated calls.
+- Expected Discord bot permissions in target channel:
+  - View Channel
+  - Send Messages
 
 ### Irys Upload (Token Metadata)
 
