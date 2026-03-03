@@ -208,6 +208,9 @@ export function MuiThemeProvider({ children }: MuiThemeProviderProps) {
             stroke: "rgba(120, 183, 255, 0.85)",
             strokeWidth: 1.6
           },
+          ".fx-wave path.reflected": {
+            filter: "none"
+          },
           ".fx-pulse": {
             animation: "fxPulse 3.4s ease-in-out infinite"
           },

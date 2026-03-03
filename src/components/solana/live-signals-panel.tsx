@@ -15,6 +15,7 @@ type LiveSignalsState = {
 
 const POLL_INTERVAL_MS = 15_000;
 const WAVE_WIDTH = 200;
+const WAVE_VIEWBOX_WIDTH = WAVE_WIDTH * 2;
 const WAVE_BASELINE = 12;
 
 function clamp(value: number, min: number, max: number) {
@@ -277,6 +278,7 @@ export function LiveSignalsPanel() {
     Boolean(signals) &&
     Number.isFinite(signals?.tps) &&
     Number.isFinite(signals?.avgSlotMs) &&
+    (signals?.tps ?? 0) > 0 &&
     (signals?.avgSlotMs ?? 0) > 0;
 
   const waveform = useMemo(() => {
@@ -341,7 +343,7 @@ export function LiveSignalsPanel() {
             <Typography variant="subtitle2">Live Solana Signals</Typography>
             <Box className="fx-wave" aria-label="Live waveform">
               <svg
-                viewBox="0 0 200 24"
+                viewBox={`0 0 ${WAVE_VIEWBOX_WIDTH} 24`}
                 preserveAspectRatio="none"
                 style={
                   hasHeartbeatData
@@ -352,6 +354,16 @@ export function LiveSignalsPanel() {
                 <path
                   className="secondary"
                   d={waveform.secondary}
+                  style={
+                    hasHeartbeatData
+                      ? { opacity: 0.56 + waveform.intensity * 0.3 }
+                      : { opacity: 0.36 }
+                  }
+                />
+                <path
+                  className="secondary"
+                  d={waveform.secondary}
+                  transform={`translate(${WAVE_WIDTH}, 0)`}
                   style={
                     hasHeartbeatData
                       ? { opacity: 0.56 + waveform.intensity * 0.3 }
@@ -370,9 +382,62 @@ export function LiveSignalsPanel() {
                       : { animation: "none", opacity: 0.45 }
                   }
                 />
+                <path
+                  className="primary"
+                  d={waveform.primary}
+                  transform={`translate(${WAVE_WIDTH}, 0)`}
+                  style={
+                    hasHeartbeatData
+                      ? {
+                          animationDuration: `${waveform.glowDuration}s`,
+                          opacity: 0.82 + waveform.intensity * 0.18
+                        }
+                      : { animation: "none", opacity: 0.45 }
+                  }
+                />
+                <path
+                  className="secondary reflected"
+                  d={waveform.secondary}
+                  transform="translate(0, 24) scale(1, -1)"
+                  style={
+                    hasHeartbeatData
+                      ? { opacity: 0.2 + waveform.intensity * 0.16 }
+                      : { opacity: 0.16 }
+                  }
+                />
+                <path
+                  className="secondary reflected"
+                  d={waveform.secondary}
+                  transform={`translate(${WAVE_WIDTH}, 24) scale(1, -1)`}
+                  style={
+                    hasHeartbeatData
+                      ? { opacity: 0.2 + waveform.intensity * 0.16 }
+                      : { opacity: 0.16 }
+                  }
+                />
+                <path
+                  className="primary reflected"
+                  d={waveform.primary}
+                  transform="translate(0, 24) scale(1, -1)"
+                  style={
+                    hasHeartbeatData
+                      ? { opacity: 0.28 + waveform.intensity * 0.2 }
+                      : { opacity: 0.2 }
+                  }
+                />
+                <path
+                  className="primary reflected"
+                  d={waveform.primary}
+                  transform={`translate(${WAVE_WIDTH}, 24) scale(1, -1)`}
+                  style={
+                    hasHeartbeatData
+                      ? { opacity: 0.28 + waveform.intensity * 0.2 }
+                      : { opacity: 0.2 }
+                  }
+                />
               </svg>
               <svg
-                viewBox="0 0 200 24"
+                viewBox={`0 0 ${WAVE_VIEWBOX_WIDTH} 24`}
                 preserveAspectRatio="none"
                 style={
                   hasHeartbeatData
@@ -390,6 +455,16 @@ export function LiveSignalsPanel() {
                   }
                 />
                 <path
+                  className="secondary"
+                  d={waveform.secondary}
+                  transform={`translate(${WAVE_WIDTH}, 0)`}
+                  style={
+                    hasHeartbeatData
+                      ? { opacity: 0.46 + waveform.intensity * 0.3 }
+                      : { opacity: 0.3 }
+                  }
+                />
+                <path
                   className="primary"
                   d={waveform.primary}
                   style={
@@ -399,6 +474,59 @@ export function LiveSignalsPanel() {
                           opacity: 0.72 + waveform.intensity * 0.2
                         }
                       : { animation: "none", opacity: 0.4 }
+                  }
+                />
+                <path
+                  className="primary"
+                  d={waveform.primary}
+                  transform={`translate(${WAVE_WIDTH}, 0)`}
+                  style={
+                    hasHeartbeatData
+                      ? {
+                          animationDuration: `${waveform.glowDuration * 1.1}s`,
+                          opacity: 0.72 + waveform.intensity * 0.2
+                        }
+                      : { animation: "none", opacity: 0.4 }
+                  }
+                />
+                <path
+                  className="secondary reflected"
+                  d={waveform.secondary}
+                  transform="translate(0, 24) scale(1, -1)"
+                  style={
+                    hasHeartbeatData
+                      ? { opacity: 0.16 + waveform.intensity * 0.14 }
+                      : { opacity: 0.12 }
+                  }
+                />
+                <path
+                  className="secondary reflected"
+                  d={waveform.secondary}
+                  transform={`translate(${WAVE_WIDTH}, 24) scale(1, -1)`}
+                  style={
+                    hasHeartbeatData
+                      ? { opacity: 0.16 + waveform.intensity * 0.14 }
+                      : { opacity: 0.12 }
+                  }
+                />
+                <path
+                  className="primary reflected"
+                  d={waveform.primary}
+                  transform="translate(0, 24) scale(1, -1)"
+                  style={
+                    hasHeartbeatData
+                      ? { opacity: 0.22 + waveform.intensity * 0.18 }
+                      : { opacity: 0.16 }
+                  }
+                />
+                <path
+                  className="primary reflected"
+                  d={waveform.primary}
+                  transform={`translate(${WAVE_WIDTH}, 24) scale(1, -1)`}
+                  style={
+                    hasHeartbeatData
+                      ? { opacity: 0.22 + waveform.intensity * 0.18 }
+                      : { opacity: 0.16 }
                   }
                 />
               </svg>
