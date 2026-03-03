@@ -16,7 +16,7 @@ This UI combines a product landing experience with dedicated operational pages f
 ### Landing
 
 - Hero with product positioning and external links:
-  - Docs: `https://grape-governance.gitbook.io/`
+  - Docs: `https://grapedao.gitbook.io`
   - Discord: `https://discord.gg/grapedao`
 - `Grape DAO` section with cards for:
   - OG Reputation Spaces
