@@ -89,6 +89,7 @@ export const grapeProducts: GrapeProduct[] = [
       "SPL Governance interface and workflows for DAO operations and participation.",
     href: "https://governance.so",
     ctaLabel: "Open Governance",
+    requestBotFromDao: true,
     logo: governanceAvatar
   }
 ];
