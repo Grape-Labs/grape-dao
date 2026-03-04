@@ -24,7 +24,7 @@ export const grapeProducts: GrapeProduct[] = [
     description:
       "On-chain reputation spaces for communities and contributor identity.",
     programId: "V1NE6WCWJPRiVFq5DtaN8p87M9DmmUd2zQuVbvLgQwX",
-    href: "https://vine.governance.so",
+    href: "https://reputation.governance.so",
     ctaLabel: "Open OG Reputation Spaces",
     sdkHref: "https://www.npmjs.com/package/@grapenpm/vine-reputation-client",
     requestBotFromDao: true,
