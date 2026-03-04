@@ -79,8 +79,8 @@ export default function Home() {
       title: "Create Your OG Reputation Space",
       detail:
         "Create your Space, set branding, and publish your on-chain reputation hub for your community.",
-      href: "https://reputation.governance.so",
-      ctaLabel: "Open reputation.governance.so"
+      href: "https://vine.governance.so",
+      ctaLabel: "Open vine.governance.so"
     },
     {
       title: "Establish Your Reputation Layer",
