@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useConnection } from "@solana/wallet-adapter-react";
+import wavelengthGif from "@/public/images/wavelength.gif";
 import { Alert, Box, Card, CardContent, Stack, Typography } from "@mui/material";
 
 type LiveSignalsState = {
@@ -15,7 +16,6 @@ type LiveSignalsState = {
 
 const POLL_INTERVAL_MS = 15_000;
 const WAVE_WIDTH = 200;
-const WAVE_VIEWBOX_WIDTH = WAVE_WIDTH * 2;
 const WAVE_BASELINE = 12;
 
 function clamp(value: number, min: number, max: number) {
@@ -342,194 +342,40 @@ export function LiveSignalsPanel() {
           <Stack direction="row" justifyContent="space-between" alignItems="center">
             <Typography variant="subtitle2">Live Solana Signals</Typography>
             <Box className="fx-wave" aria-label="Live waveform">
-              <svg
-                viewBox={`0 0 ${WAVE_VIEWBOX_WIDTH} 24`}
-                preserveAspectRatio="none"
-                style={
-                  hasHeartbeatData
-                    ? { animationDuration: `${waveform.shiftDurationA}s` }
-                    : { animation: "none" }
-                }
-              >
-                <path
-                  className="secondary"
-                  d={waveform.secondary}
-                  style={
-                    hasHeartbeatData
-                      ? { opacity: 0.56 + waveform.intensity * 0.3 }
-                      : { opacity: 0.36 }
-                  }
+              {hasHeartbeatData ? (
+                <Box
+                  component="img"
+                  src={wavelengthGif.src}
+                  alt="Solana live waveform"
+                  sx={{
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "cover",
+                    objectPosition: "center",
+                    display: "block",
+                    opacity: 0.78 + waveform.intensity * 0.22
+                  }}
                 />
-                <path
-                  className="secondary"
-                  d={waveform.secondary}
-                  transform={`translate(${WAVE_WIDTH}, 0)`}
-                  style={
-                    hasHeartbeatData
-                      ? { opacity: 0.56 + waveform.intensity * 0.3 }
-                      : { opacity: 0.36 }
-                  }
-                />
-                <path
-                  className="primary"
-                  d={waveform.primary}
-                  style={
-                    hasHeartbeatData
-                      ? {
-                          animationDuration: `${waveform.glowDuration}s`,
-                          opacity: 0.82 + waveform.intensity * 0.18
-                        }
-                      : { animation: "none", opacity: 0.45 }
-                  }
-                />
-                <path
-                  className="primary"
-                  d={waveform.primary}
-                  transform={`translate(${WAVE_WIDTH}, 0)`}
-                  style={
-                    hasHeartbeatData
-                      ? {
-                          animationDuration: `${waveform.glowDuration}s`,
-                          opacity: 0.82 + waveform.intensity * 0.18
-                        }
-                      : { animation: "none", opacity: 0.45 }
-                  }
-                />
-                <path
-                  className="secondary reflected"
-                  d={waveform.secondary}
-                  transform="translate(0, 24) scale(1, -1)"
-                  style={
-                    hasHeartbeatData
-                      ? { opacity: 0.2 + waveform.intensity * 0.16 }
-                      : { opacity: 0.16 }
-                  }
-                />
-                <path
-                  className="secondary reflected"
-                  d={waveform.secondary}
-                  transform={`translate(${WAVE_WIDTH}, 24) scale(1, -1)`}
-                  style={
-                    hasHeartbeatData
-                      ? { opacity: 0.2 + waveform.intensity * 0.16 }
-                      : { opacity: 0.16 }
-                  }
-                />
-                <path
-                  className="primary reflected"
-                  d={waveform.primary}
-                  transform="translate(0, 24) scale(1, -1)"
-                  style={
-                    hasHeartbeatData
-                      ? { opacity: 0.28 + waveform.intensity * 0.2 }
-                      : { opacity: 0.2 }
-                  }
-                />
-                <path
-                  className="primary reflected"
-                  d={waveform.primary}
-                  transform={`translate(${WAVE_WIDTH}, 24) scale(1, -1)`}
-                  style={
-                    hasHeartbeatData
-                      ? { opacity: 0.28 + waveform.intensity * 0.2 }
-                      : { opacity: 0.2 }
-                  }
-                />
-              </svg>
-              <svg
-                viewBox={`0 0 ${WAVE_VIEWBOX_WIDTH} 24`}
-                preserveAspectRatio="none"
-                style={
-                  hasHeartbeatData
-                    ? { animationDuration: `${waveform.shiftDurationB}s` }
-                    : { animation: "none" }
-                }
-              >
-                <path
-                  className="secondary"
-                  d={waveform.secondary}
-                  style={
-                    hasHeartbeatData
-                      ? { opacity: 0.46 + waveform.intensity * 0.3 }
-                      : { opacity: 0.3 }
-                  }
-                />
-                <path
-                  className="secondary"
-                  d={waveform.secondary}
-                  transform={`translate(${WAVE_WIDTH}, 0)`}
-                  style={
-                    hasHeartbeatData
-                      ? { opacity: 0.46 + waveform.intensity * 0.3 }
-                      : { opacity: 0.3 }
-                  }
-                />
-                <path
-                  className="primary"
-                  d={waveform.primary}
-                  style={
-                    hasHeartbeatData
-                      ? {
-                          animationDuration: `${waveform.glowDuration * 1.1}s`,
-                          opacity: 0.72 + waveform.intensity * 0.2
-                        }
-                      : { animation: "none", opacity: 0.4 }
-                  }
-                />
-                <path
-                  className="primary"
-                  d={waveform.primary}
-                  transform={`translate(${WAVE_WIDTH}, 0)`}
-                  style={
-                    hasHeartbeatData
-                      ? {
-                          animationDuration: `${waveform.glowDuration * 1.1}s`,
-                          opacity: 0.72 + waveform.intensity * 0.2
-                        }
-                      : { animation: "none", opacity: 0.4 }
-                  }
-                />
-                <path
-                  className="secondary reflected"
-                  d={waveform.secondary}
-                  transform="translate(0, 24) scale(1, -1)"
-                  style={
-                    hasHeartbeatData
-                      ? { opacity: 0.16 + waveform.intensity * 0.14 }
-                      : { opacity: 0.12 }
-                  }
-                />
-                <path
-                  className="secondary reflected"
-                  d={waveform.secondary}
-                  transform={`translate(${WAVE_WIDTH}, 24) scale(1, -1)`}
-                  style={
-                    hasHeartbeatData
-                      ? { opacity: 0.16 + waveform.intensity * 0.14 }
-                      : { opacity: 0.12 }
-                  }
-                />
-                <path
-                  className="primary reflected"
-                  d={waveform.primary}
-                  transform="translate(0, 24) scale(1, -1)"
-                  style={
-                    hasHeartbeatData
-                      ? { opacity: 0.22 + waveform.intensity * 0.18 }
-                      : { opacity: 0.16 }
-                  }
-                />
-                <path
-                  className="primary reflected"
-                  d={waveform.primary}
-                  transform={`translate(${WAVE_WIDTH}, 24) scale(1, -1)`}
-                  style={
-                    hasHeartbeatData
-                      ? { opacity: 0.22 + waveform.intensity * 0.18 }
-                      : { opacity: 0.16 }
-                  }
-                />
-              </svg>
+              ) : (
+                <Box
+                  sx={{
+                    width: "100%",
+                    height: "100%",
+                    display: "flex",
+                    alignItems: "center",
+                    px: 0.5
+                  }}
+                >
+                  <Box
+                    sx={{
+                      width: "100%",
+                      height: "1px",
+                      background:
+                        "linear-gradient(90deg, rgba(120, 183, 255, 0.15), rgba(120, 183, 255, 0.65), rgba(120, 183, 255, 0.15))"
+                    }}
+                  />
+                </Box>
+              )}
             </Box>
           </Stack>
 
