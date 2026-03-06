@@ -1,7 +1,7 @@
 "use client";
 
 import { Buffer } from "buffer";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import type { ParsedAccountData } from "@solana/web3.js";
 import { PublicKey, VersionedTransaction } from "@solana/web3.js";
@@ -156,6 +156,15 @@ function shortenAddress(address: string) {
   return `${address.slice(0, 4)}...${address.slice(-4)}`;
 }
 
+function isValidMintAddress(address: string) {
+  try {
+    new PublicKey(address);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function formatSimulationError(value: unknown) {
   if (!value) {
     return null;
@@ -263,6 +272,7 @@ export function JupiterSwapRouter({ holdingsState }: JupiterSwapRouterProps) {
   const [slippageBpsInput, setSlippageBpsInput] = useState("50");
   const [safeMode, setSafeMode] = useState(true);
   const [onlyDirectRoutes, setOnlyDirectRoutes] = useState(false);
+  const [customOutputMintInput, setCustomOutputMintInput] = useState("");
 
   const [isLoadingQuote, setIsLoadingQuote] = useState(false);
   const [isSimulating, setIsSimulating] = useState(false);
@@ -283,7 +293,7 @@ export function JupiterSwapRouter({ holdingsState }: JupiterSwapRouterProps) {
   const explorerCluster = useMemo(() => inferExplorerCluster(endpoint), [endpoint]);
 
   const { getTokenMetadata } = useTokenMetadata(
-    holdings.tokenAccounts.map((account) => account.mint)
+    [...holdings.tokenAccounts.map((account) => account.mint), inputMint, outputMint]
   );
   const mintBalanceMap = useMemo(() => {
     const map = new Map<string, { rawAmount: bigint; decimals: number }>();
@@ -347,6 +357,14 @@ export function JupiterSwapRouter({ holdingsState }: JupiterSwapRouterProps) {
   );
   const canUseMax = useMemo(() => getBalanceRawForMint(inputMint) > 0, [getBalanceRawForMint, inputMint]);
 
+  const getMintLabel = useCallback(
+    (mint: string) =>
+      KNOWN_TOKEN_SYMBOLS[mint] ||
+      getTokenMetadata(mint)?.symbol ||
+      shortenAddress(mint),
+    [getTokenMetadata]
+  );
+
   const mintOptions = useMemo(() => {
     const fromWallet = holdings.tokenAccounts.map((account) => account.mint);
     const ordered = [SOL_MINT, USDC_MINT, USDT_MINT, JUP_MINT, BONK_MINT, ...fromWallet];
@@ -359,22 +377,34 @@ export function JupiterSwapRouter({ holdingsState }: JupiterSwapRouterProps) {
         seen.add(mint);
         return true;
       })
-      .filter((mint) => {
-        try {
-          new PublicKey(mint);
-          return true;
-        } catch {
-          return false;
-        }
-      })
+      .filter((mint) => isValidMintAddress(mint))
       .map((mint) => {
-        const symbol =
-          KNOWN_TOKEN_SYMBOLS[mint] ||
-          getTokenMetadata(mint)?.symbol ||
-          shortenAddress(mint);
+        const symbol = getMintLabel(mint);
         return { mint, symbol };
       });
-  }, [getTokenMetadata, holdings.tokenAccounts]);
+  }, [getMintLabel, holdings.tokenAccounts]);
+
+  const inputMintOptions = useMemo(() => {
+    if (!isValidMintAddress(inputMint) || mintOptions.some((option) => option.mint === inputMint)) {
+      return mintOptions;
+    }
+    return [{ mint: inputMint, symbol: getMintLabel(inputMint) }, ...mintOptions];
+  }, [getMintLabel, inputMint, mintOptions]);
+
+  const outputMintOptions = useMemo(() => {
+    if (!isValidMintAddress(outputMint) || mintOptions.some((option) => option.mint === outputMint)) {
+      return mintOptions;
+    }
+    return [{ mint: outputMint, symbol: getMintLabel(outputMint) }, ...mintOptions];
+  }, [getMintLabel, mintOptions, outputMint]);
+
+  useEffect(() => {
+    if (mintOptions.some((option) => option.mint === outputMint)) {
+      setCustomOutputMintInput("");
+      return;
+    }
+    setCustomOutputMintInput(outputMint);
+  }, [mintOptions, outputMint]);
 
   const resolveMintDecimals = useCallback(
     async (mint: string) => {
@@ -654,6 +684,29 @@ export function JupiterSwapRouter({ holdingsState }: JupiterSwapRouterProps) {
     setSimulation(null);
   }, [inputMint, outputMint]);
 
+  const applyCustomOutputMint = useCallback(() => {
+    const trimmed = customOutputMintInput.trim();
+    if (!trimmed) {
+      setStatus({
+        severity: "error",
+        message: "Enter a custom output mint address."
+      });
+      return;
+    }
+
+    try {
+      const normalizedMint = new PublicKey(trimmed).toBase58();
+      setOutputMint(normalizedMint);
+      setSimulation(null);
+      setStatus(null);
+    } catch {
+      setStatus({
+        severity: "error",
+        message: "Custom output mint must be a valid Solana address."
+      });
+    }
+  }, [customOutputMintInput]);
+
   return (
     <Card variant="outlined" sx={{ borderRadius: 1.75 }}>
       <CardContent sx={{ p: 1.75 }}>
@@ -692,7 +745,7 @@ export function JupiterSwapRouter({ holdingsState }: JupiterSwapRouterProps) {
               }}
               fullWidth
             >
-              {mintOptions.map((option) => (
+              {inputMintOptions.map((option) => (
                 <MenuItem key={`input-${option.mint}`} value={option.mint}>
                   {option.symbol} | Bal: {getBalanceLabelForMint(option.mint)} |{" "}
                   {shortenAddress(option.mint)}
@@ -717,13 +770,34 @@ export function JupiterSwapRouter({ holdingsState }: JupiterSwapRouterProps) {
               }}
               fullWidth
             >
-              {mintOptions.map((option) => (
+              {outputMintOptions.map((option) => (
                 <MenuItem key={`output-${option.mint}`} value={option.mint}>
                   {option.symbol} | Bal: {getBalanceLabelForMint(option.mint)} |{" "}
                   {shortenAddress(option.mint)}
                 </MenuItem>
               ))}
             </TextField>
+          </Stack>
+
+          <Stack direction={{ xs: "column", md: "row" }} spacing={1}>
+            <TextField
+              size="small"
+              label="Custom Output Mint"
+              value={customOutputMintInput}
+              onChange={(event) => {
+                setCustomOutputMintInput(event.target.value);
+              }}
+              placeholder="Token mint address"
+              helperText="Use any valid SPL mint address, including tokens not currently in this wallet."
+              fullWidth
+            />
+            <Button
+              variant="outlined"
+              onClick={applyCustomOutputMint}
+              sx={{ minWidth: { xs: "100%", md: 144 } }}
+            >
+              Use Custom
+            </Button>
           </Stack>
 
           <Stack direction={{ xs: "column", md: "row" }} spacing={1}>
@@ -760,8 +834,7 @@ export function JupiterSwapRouter({ holdingsState }: JupiterSwapRouterProps) {
             />
           </Stack>
           <Typography variant="caption" color="text.secondary">
-            Available ({KNOWN_TOKEN_SYMBOLS[inputMint] || shortenAddress(inputMint)}):{" "}
-            {inputMintBalanceLabel}
+            Available ({getMintLabel(inputMint)}): {inputMintBalanceLabel}
           </Typography>
 
           <Stack direction={{ xs: "column", sm: "row" }} spacing={0.5} useFlexGap flexWrap="wrap">
@@ -848,10 +921,9 @@ export function JupiterSwapRouter({ holdingsState }: JupiterSwapRouterProps) {
                   </Stack>
 
                   <Typography variant="caption" color="text.secondary">
-                    Quote: {quoteSummary.inAmountUi} {KNOWN_TOKEN_SYMBOLS[quote.inputMint] || shortenAddress(quote.inputMint)}
-                    {" -> "}
-                    {quoteSummary.outAmountUi} {KNOWN_TOKEN_SYMBOLS[quote.outputMint] || shortenAddress(quote.outputMint)}
-                    {" | "}Min Out: {quoteSummary.minOutUi}
+                    Quote: {quoteSummary.inAmountUi} {getMintLabel(quote.inputMint)} {" -> "}{" "}
+                    {quoteSummary.outAmountUi} {getMintLabel(quote.outputMint)} {" | "}Min Out:{" "}
+                    {quoteSummary.minOutUi}
                   </Typography>
 
                   <Box sx={{ display: "grid", gap: 0.35 }}>
