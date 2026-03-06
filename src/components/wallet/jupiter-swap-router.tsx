@@ -1,7 +1,7 @@
 "use client";
 
 import { Buffer } from "buffer";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import type { ParsedAccountData } from "@solana/web3.js";
 import { PublicKey, VersionedTransaction } from "@solana/web3.js";
@@ -398,14 +398,6 @@ export function JupiterSwapRouter({ holdingsState }: JupiterSwapRouterProps) {
     return [{ mint: outputMint, symbol: getMintLabel(outputMint) }, ...mintOptions];
   }, [getMintLabel, mintOptions, outputMint]);
 
-  useEffect(() => {
-    if (mintOptions.some((option) => option.mint === outputMint)) {
-      setCustomOutputMintInput("");
-      return;
-    }
-    setCustomOutputMintInput(outputMint);
-  }, [mintOptions, outputMint]);
-
   const resolveMintDecimals = useCallback(
     async (mint: string) => {
       if (mint === SOL_MINT) {
@@ -681,8 +673,11 @@ export function JupiterSwapRouter({ holdingsState }: JupiterSwapRouterProps) {
   const reverseSwapDirection = useCallback(() => {
     setInputMint(outputMint);
     setOutputMint(inputMint);
+    setCustomOutputMintInput(
+      mintOptions.some((option) => option.mint === inputMint) ? "" : inputMint
+    );
     setSimulation(null);
-  }, [inputMint, outputMint]);
+  }, [inputMint, mintOptions, outputMint]);
 
   const applyCustomOutputMint = useCallback(() => {
     const trimmed = customOutputMintInput.trim();
@@ -765,7 +760,13 @@ export function JupiterSwapRouter({ holdingsState }: JupiterSwapRouterProps) {
               label="Output Mint"
               value={outputMint}
               onChange={(event) => {
-                setOutputMint(event.target.value);
+                const nextOutputMint = event.target.value;
+                setOutputMint(nextOutputMint);
+                setCustomOutputMintInput(
+                  mintOptions.some((option) => option.mint === nextOutputMint)
+                    ? ""
+                    : nextOutputMint
+                );
                 setSimulation(null);
               }}
               fullWidth
