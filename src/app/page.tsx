@@ -1,4 +1,4 @@
-import { grapeLinks, grapeProducts } from "@/lib/grape";
+import { grapeBots, grapeLinks, grapeProducts } from "@/lib/grape";
 import { LiveSignalsPanel } from "@/components/solana/live-signals-panel";
 import { RotatingTagline } from "@/components/brand/rotating-tagline";
 import GitHubIcon from "@mui/icons-material/GitHub";
@@ -476,6 +476,70 @@ export default function Home() {
                         Bot invite links are private. Reach out to the Grape DAO for setup.
                       </Typography>
                     ) : null}
+                  </Stack>
+                </CardContent>
+              </Card>
+            </Grid>
+          ))}
+        </Grid>
+      </Box>
+
+      <Box mt={5}>
+        <Stack spacing={1}>
+          <Typography variant="overline" color="primary.light">
+            Discord Bots
+          </Typography>
+          <Typography variant="h2" sx={{ fontSize: { xs: "1.45rem", md: "1.95rem" } }}>
+            Automations That Run Inside The Community
+          </Typography>
+          <Typography color="text.secondary" sx={{ maxWidth: 860 }}>
+            Grape’s bot layer brings reputation, verification, access control, wallet
+            actions, and governance updates directly into Discord where contributors already coordinate.
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            Bot invite links are private. Reach out to the Grape DAO for setup.
+          </Typography>
+        </Stack>
+        <Grid container spacing={2} mt={0.5}>
+          {grapeBots.map((bot, index) => (
+            <Grid item xs={12} md={6} lg={4} key={bot.name}>
+              <Card
+                className="fx-enter fx-card fx-shell"
+                sx={{
+                  height: "100%",
+                  borderRadius: 2.5,
+                  background:
+                    "linear-gradient(150deg, rgba(16, 30, 39, 0.95), rgba(9, 18, 24, 0.96))",
+                  border: "1px solid",
+                  borderColor: "divider",
+                  animationDelay: `${index * 80}ms`
+                }}
+              >
+                <CardContent sx={{ p: 2.1 }}>
+                  <Stack spacing={1.2}>
+                    <Stack direction="row" spacing={0.8} alignItems="center" useFlexGap flexWrap="wrap">
+                      <Chip
+                        size="small"
+                        variant="outlined"
+                        label={`0${index + 1}`}
+                        sx={{ fontFamily: "var(--font-mono), monospace" }}
+                      />
+                      <Chip size="small" variant="outlined" color="secondary" label={bot.role} />
+                    </Stack>
+                    <Typography variant="h3" sx={{ fontSize: "1.15rem" }}>
+                      {bot.name}
+                    </Typography>
+                    <Typography color="text.secondary">{bot.description}</Typography>
+                    <Button
+                      variant="outlined"
+                      color="secondary"
+                      href={grapeLinks.discord}
+                      target="_blank"
+                      rel="noreferrer"
+                      sx={{ width: "fit-content" }}
+                    >
+                      Request Bot Access
+                    </Button>
                   </Stack>
                 </CardContent>
               </Card>
