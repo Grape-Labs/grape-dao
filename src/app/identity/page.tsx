@@ -1,9 +1,8 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { WalletSection } from "@/components/wallet/wallet-section";
-import { InstallPwaButton } from "@/components/pwa/install-pwa-button";
-import { grapeLinks } from "@/lib/grape";
-import { Box, Button, Card, CardContent, Chip, Container, Stack, Typography } from "@mui/material";
+import { WorkspaceHeaderActions } from "@/components/navigation/workspace-header-actions";
+import { Box, Card, CardContent, Chip, Container, Stack, Typography } from "@mui/material";
 
 export const metadata: Metadata = {
   title: "Grape Identity",
@@ -79,24 +78,11 @@ export default function IdentityPage() {
               Operational workspace for simulation, transfers, approvals, staking, rent recovery,
               and program buffer workflows with unified RPC and wallet controls.
             </Typography>
-            <Stack direction={{ xs: "column", sm: "row" }} spacing={1.1} useFlexGap flexWrap="wrap">
-              <InstallPwaButton appName="Grape Identity" />
-              <Button variant="contained" href="/">
-                Back to Hub
-              </Button>
-              <Button variant="outlined" color="primary" href="/token">
-                Token Tools
-              </Button>
-              <Button variant="outlined" color="primary" href="/nft">
-                NFT Tools
-              </Button>
-              <Button variant="outlined" color="primary" href="/faq">
-                FAQ
-              </Button>
-              <Button variant="outlined" color="secondary" href={grapeLinks.docs} target="_blank" rel="noreferrer">
-                Docs
-              </Button>
-            </Stack>
+            <WorkspaceHeaderActions
+              currentRoute="identity"
+              installAppName="Grape Identity"
+              installButtonLabel="Install Identity App"
+            />
             <Stack direction={{ xs: "column", sm: "row" }} spacing={1} useFlexGap flexWrap="wrap">
               <Chip label="Mainnet Operations" variant="outlined" color="secondary" />
               <Chip label="Identity + Governance Tooling" variant="outlined" color="secondary" />
