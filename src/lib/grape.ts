@@ -18,6 +18,12 @@ export type GrapeProduct = {
   logo: StaticImageData;
 };
 
+export type GrapeBot = {
+  name: string;
+  description: string;
+  role: string;
+};
+
 export const grapeProducts: GrapeProduct[] = [
   {
     name: "OG Reputation Spaces",
@@ -91,6 +97,39 @@ export const grapeProducts: GrapeProduct[] = [
     ctaLabel: "Open Governance",
     requestBotFromDao: true,
     logo: governanceAvatar
+  }
+];
+
+export const grapeBots: GrapeBot[] = [
+  {
+    name: "OG Reputation Spaces Bot",
+    description:
+      "Discord operations bot for administering OG Reputation Spaces, checking contributor status, and awarding points directly inside community workflows.",
+    role: "Admin + Points"
+  },
+  {
+    name: "Grape Verification Bot",
+    description:
+      "Verification-focused Discord bot for managing Grape Verification checks, trust tooling, and membership workflows across community servers.",
+    role: "Verification"
+  },
+  {
+    name: "Grape Access Bot",
+    description:
+      "Discord access-control bot for Grape Access tooling, helping communities gate channels, roles, and experiences with policy-aware checks.",
+    role: "Access Control"
+  },
+  {
+    name: "Grape Wallet Bot",
+    description:
+      "Soft wallet Discord bot that supports token sending directly inside Discord, giving communities a lightweight wallet workflow where conversations happen.",
+    role: "Wallet Transfers"
+  },
+  {
+    name: "Governance Bot",
+    description:
+      "Governance update bot that posts new proposals into dedicated Discord channels so contributors can track DAO activity without leaving the server.",
+    role: "Proposal Alerts"
   }
 ];
 
