@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
+import { WorkspaceHeaderActions } from "@/components/navigation/workspace-header-actions";
 import { grapeLinks } from "@/lib/grape";
 import {
   Accordion,
   AccordionDetails,
   AccordionSummary,
-  Button,
   Card,
   CardContent,
   Chip,
@@ -193,30 +193,24 @@ export default function FaqPage() {
             <Typography color="text.secondary" sx={{ maxWidth: 860 }}>
               Quick answers for builders and operators using Grape protocol tools.
             </Typography>
-            <Stack direction={{ xs: "column", sm: "row" }} spacing={1.1}>
-              <Button variant="contained" href="/">
-                Back to Hub
-              </Button>
-              <Button
-                variant="outlined"
-                color="secondary"
-                href={grapeLinks.docs}
-                target="_blank"
-                rel="noreferrer"
-              >
-                Docs
-              </Button>
-              <Button
-                variant="outlined"
-                color="secondary"
-                href={grapeLinks.discord}
-                target="_blank"
-                rel="noreferrer"
-              >
-                Discord
-              </Button>
-              <Chip label="Builder Support" variant="outlined" color="secondary" />
-            </Stack>
+            <WorkspaceHeaderActions
+              currentRoute="faq"
+              installAppName="Grape Hub"
+              installButtonLabel="Install Hub App"
+              utilityExtras={
+                <Chip
+                  component="a"
+                  clickable
+                  href={grapeLinks.discord}
+                  target="_blank"
+                  rel="noreferrer"
+                  label="Discord"
+                  variant="outlined"
+                  color="secondary"
+                />
+              }
+            />
+            <Chip label="Builder Support" variant="outlined" color="secondary" />
           </Stack>
         </CardContent>
       </Card>

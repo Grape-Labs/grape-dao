@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
-import { grapeLinks } from "@/lib/grape";
+import { WorkspaceHeaderActions } from "@/components/navigation/workspace-header-actions";
 import { NftToolsSection } from "@/components/wallet/nft-tools-section";
-import { Box, Button, Card, CardContent, Chip, Container, Stack, Typography } from "@mui/material";
+import { Box, Card, CardContent, Chip, Container, Stack, Typography } from "@mui/material";
 
 export const metadata: Metadata = {
   title: "NFT Tools",
@@ -33,24 +33,12 @@ export default function NftPage() {
             <Typography color="text.secondary" sx={{ maxWidth: 860 }}>
               Dedicated workspace for NFT lifecycle operations: mint, send, retangle into new mints, and push metadata updates.
             </Typography>
-            <Stack direction={{ xs: "column", sm: "row" }} spacing={1.1}>
-              <Button variant="contained" href="/">
-                Back to Hub
-              </Button>
-              <Button variant="outlined" color="primary" href="/identity">
-                Identity
-              </Button>
-              <Button variant="outlined" color="primary" href="/token">
-                Token Tools
-              </Button>
-              <Button variant="outlined" color="primary" href="/faq">
-                FAQ
-              </Button>
-              <Button variant="outlined" color="secondary" href={grapeLinks.docs} target="_blank" rel="noreferrer">
-                Docs
-              </Button>
-              <Chip label="NFT Authority + Metadata" variant="outlined" color="secondary" />
-            </Stack>
+            <WorkspaceHeaderActions
+              currentRoute="nft"
+              installAppName="Grape Hub"
+              installButtonLabel="Install Hub App"
+            />
+            <Chip label="NFT Authority + Metadata" variant="outlined" color="secondary" />
           </Stack>
         </CardContent>
       </Card>
