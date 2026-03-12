@@ -390,7 +390,6 @@ export default function Home() {
                     identity, reputation, access, rewards, and governance.
                   </Typography>
                   <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                    <Chip variant="outlined" color="secondary" label="Beta" />
                     <Chip variant="outlined" color="secondary" label="Chromium Extension" />
                     <Chip variant="outlined" color="secondary" label="Android App" />
                     <Chip variant="outlined" color="secondary" label="Multi-chain" />
