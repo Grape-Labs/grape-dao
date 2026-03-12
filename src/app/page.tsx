@@ -3,6 +3,8 @@ import { LiveSignalsPanel } from "@/components/solana/live-signals-panel";
 import { RotatingTagline } from "@/components/brand/rotating-tagline";
 import GitHubIcon from "@mui/icons-material/GitHub";
 import Image from "next/image";
+import grapeWalletPreview from "@/public/images/grape_wallet_preview.png";
+import grapeWalletPreview2 from "@/public/images/grape_wallet_preview2.png";
 import {
   Avatar,
   Box,
@@ -93,6 +95,10 @@ export default function Home() {
         "Deploy your Discord bot to automate awards, recognize participation, and connect your community activity directly to on-chain reputation."
     }
   ];
+  const walletPreviewShots = [
+    { src: grapeWalletPreview, alt: "Grape Wallet beta unlock screen on Android" },
+    { src: grapeWalletPreview2, alt: "Grape Wallet beta home screen on Android" }
+  ];
 
   return (
     <Container maxWidth="xl" sx={{ py: { xs: 3, md: 6 } }}>
@@ -178,9 +184,9 @@ export default function Home() {
                   </Box>
                 </Typography>
                 <Typography color="text.secondary" sx={{ maxWidth: 760 }}>
-                  Grape delivers mainnet-ready primitives for reputation,
-                  verification, access control, and DAO governance so
-                  communities can coordinate, reward, and scale on Solana.
+                  Grape is an ecosystem layer for identity, reputation, access,
+                  rewards, and governance, helping communities coordinate
+                  on-chain.
                 </Typography>
                 <Typography color="text.secondary" sx={{ maxWidth: 760 }}>
                   Learn more in the docs and connect with the DAO on Discord.
@@ -346,6 +352,187 @@ export default function Home() {
                 ))}
               </Grid>
             </Stack>
+          </CardContent>
+        </Card>
+      </Box>
+
+      <Box mt={5}>
+        <Card
+          className="fx-enter fx-shell fx-glow"
+          sx={{
+            borderRadius: 2.5,
+            overflow: "hidden",
+            background:
+              "linear-gradient(135deg, rgba(30, 10, 49, 0.96), rgba(11, 18, 34, 0.96) 52%, rgba(8, 14, 22, 0.98))"
+          }}
+        >
+          <CardContent sx={{ p: { xs: 2.2, md: 3 } }}>
+            <Grid container spacing={2.5} alignItems="center">
+              <Grid item xs={12} md={7}>
+                <Stack spacing={1.4}>
+                  <Stack direction="row" spacing={1} alignItems="center" useFlexGap flexWrap="wrap">
+                    <Typography variant="overline" color="primary.light">
+                      Beta Preview
+                    </Typography>
+                    <Chip size="small" color="secondary" label="Multi-chain Wallet" />
+                  </Stack>
+                  <Typography variant="h2" sx={{ fontSize: { xs: "1.55rem", md: "2rem" } }}>
+                    Grape Wallet for Chromium and Android
+                  </Typography>
+                  <Typography color="text.secondary" sx={{ maxWidth: 680 }}>
+                    Grape Wallet is now in beta as a new extension and mobile
+                    experience with a broader multi-chain product direction.
+                  </Typography>
+                  <Typography color="text.secondary" sx={{ maxWidth: 680 }}>
+                    Built for people moving across ecosystems, Grape Wallet
+                    combines balances, transfers, swaps, bridging, and everyday
+                    wallet actions with the Grape product stack already powering
+                    identity, reputation, access, rewards, and governance.
+                  </Typography>
+                  <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                    <Chip variant="outlined" color="secondary" label="Beta" />
+                    <Chip variant="outlined" color="secondary" label="Chromium Extension" />
+                    <Chip variant="outlined" color="secondary" label="Android App" />
+                    <Chip variant="outlined" color="secondary" label="Multi-chain" />
+                  </Stack>
+                  <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+                    <Button variant="contained" color="secondary" disabled>
+                      Beta
+                    </Button>
+                    <Button
+                      variant="outlined"
+                      color="secondary"
+                      href={grapeLinks.discord}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Get Updates on Discord
+                    </Button>
+                  </Stack>
+                  <Grid container spacing={1.2}>
+                    <Grid item xs={12} sm={4}>
+                      <Card
+                        variant="outlined"
+                        sx={{
+                          height: "100%",
+                          borderRadius: 1.8,
+                          background:
+                            "linear-gradient(145deg, rgba(18, 32, 42, 0.82), rgba(12, 22, 30, 0.82))",
+                          borderColor: "divider"
+                        }}
+                      >
+                        <CardContent sx={{ p: 1.3, "&:last-child": { pb: 1.3 } }}>
+                          <Stack spacing={0.7}>
+                            <Typography variant="subtitle2">Bridged With Grape</Typography>
+                            <Typography variant="body2" color="text.secondary">
+                              The wallet will connect directly to Grape identity,
+                              reputation, access, claims, and governance tooling
+                              so users can move from holding assets to
+                              participating in communities and DAOs.
+                            </Typography>
+                          </Stack>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                    <Grid item xs={12} sm={4}>
+                      <Card
+                        variant="outlined"
+                        sx={{
+                          height: "100%",
+                          borderRadius: 1.8,
+                          background:
+                            "linear-gradient(145deg, rgba(18, 32, 42, 0.82), rgba(12, 22, 30, 0.82))",
+                          borderColor: "divider"
+                        }}
+                      >
+                        <CardContent sx={{ p: 1.3, "&:last-child": { pb: 1.3 } }}>
+                          <Stack spacing={0.7}>
+                            <Typography variant="subtitle2">What We&apos;re Adding</Typography>
+                            <Typography variant="body2" color="text.secondary">
+                              Wallet-native verification, gated access flows,
+                              reward and claim experiences, governance actions,
+                              and safer multi-chain operations informed by
+                              Grape&apos;s existing community tooling.
+                            </Typography>
+                          </Stack>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                    <Grid item xs={12} sm={4}>
+                      <Card
+                        variant="outlined"
+                        sx={{
+                          height: "100%",
+                          borderRadius: 1.8,
+                          background:
+                            "linear-gradient(145deg, rgba(18, 32, 42, 0.82), rgba(12, 22, 30, 0.82))",
+                          borderColor: "divider"
+                        }}
+                      >
+                        <CardContent sx={{ p: 1.3, "&:last-child": { pb: 1.3 } }}>
+                          <Stack spacing={0.7}>
+                            <Typography variant="subtitle2">What Makes It Unique</Typography>
+                            <Typography variant="body2" color="text.secondary">
+                              Most wallets stop at transactions. Grape Wallet is
+                              designed to carry trust context, community access,
+                              and governance participation with the wallet
+                              itself, not as an afterthought.
+                            </Typography>
+                          </Stack>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                  </Grid>
+                </Stack>
+              </Grid>
+              <Grid item xs={12} md={5}>
+                <Box
+                  sx={{
+                    display: "flex",
+                    justifyContent: "center",
+                    py: { xs: 1, md: 0 }
+                  }}
+                >
+                  <Stack
+                    direction="row"
+                    spacing={{ xs: 1, md: 1.4 }}
+                    alignItems="flex-start"
+                    sx={{ width: "100%", justifyContent: "center" }}
+                  >
+                    {walletPreviewShots.map((preview, index) => (
+                      <Box
+                        key={preview.alt}
+                        sx={{
+                          width: "100%",
+                          maxWidth: { xs: 198, md: 240 },
+                          p: 0.8,
+                          mt: index === 1 ? { xs: 2, md: 3 } : 0,
+                          borderRadius: 4,
+                          overflow: "hidden",
+                          background:
+                            "linear-gradient(160deg, rgba(255, 255, 255, 0.08), rgba(160, 96, 255, 0.08))",
+                          border: "1px solid",
+                          borderColor: "rgba(255, 255, 255, 0.08)",
+                          boxShadow: "0 30px 70px rgba(0, 0, 0, 0.4)"
+                        }}
+                      >
+                        <Image
+                          src={preview.src}
+                          alt={preview.alt}
+                          priority={false}
+                          style={{
+                            width: "100%",
+                            height: "auto",
+                            display: "block",
+                            borderRadius: 24
+                          }}
+                        />
+                      </Box>
+                    ))}
+                  </Stack>
+                </Box>
+              </Grid>
+            </Grid>
           </CardContent>
         </Card>
       </Box>
