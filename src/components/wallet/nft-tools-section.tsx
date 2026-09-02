@@ -1,16 +1,14 @@
 "use client";
 
 import {
-  Accordion,
-  AccordionDetails,
-  AccordionSummary,
   Box,
   Card,
   CardContent,
+  Grid,
   Stack,
   Typography
 } from "@mui/material";
-import { useState } from "react";
+import CollectionsRoundedIcon from "@mui/icons-material/CollectionsRounded";
 import { HoldingsPanel } from "@/components/wallet/holdings-panel";
 import { NftManager } from "@/components/wallet/nft-manager";
 import { WalletConnectControl } from "@/components/wallet/wallet-connect-control";
@@ -18,14 +16,11 @@ import { useWalletHoldings } from "@/hooks/use-wallet-holdings";
 
 export function NftToolsSection() {
   const holdingsState = useWalletHoldings();
-  const [expandedSection, setExpandedSection] = useState<string | false>(
-    "operations"
-  );
 
   return (
     <Card
       id="nft-tools"
-      className="fx-enter fx-pulse"
+      className="fx-enter"
       sx={{
         borderRadius: 2.5,
         border: "1px solid",
@@ -34,75 +29,40 @@ export function NftToolsSection() {
       }}
     >
       <CardContent sx={{ p: { xs: 2, md: 2.5 } }}>
-        <Stack spacing={1.8}>
-          <Box>
-            <Typography variant="overline" color="primary.light">
-              NFT Tools
-            </Typography>
-            <Typography variant="h2" sx={{ fontSize: { xs: "1.55rem", md: "1.95rem" }, mt: 0.4 }}>
-              Authority Console
-            </Typography>
-            <Typography color="text.secondary" mt={0.8}>
-              Mint NFTs, send holdings, retangle to new mints, and push metadata updates in batch.
-            </Typography>
-          </Box>
-
-          <WalletConnectControl connectText="Connect" />
-
-          <Accordion
-            expanded={expandedSection === "operations"}
-            onChange={(_event, isExpanded) => {
-              setExpandedSection(isExpanded ? "operations" : false);
-            }}
-            disableGutters
-            sx={{
-              bgcolor: "transparent",
-              border: "1px solid",
-              borderColor: "divider",
-              borderRadius: "8px !important"
-            }}
-          >
-            <AccordionSummary
-              expandIcon={
-                <Typography color="text.secondary">
-                  {expandedSection === "operations" ? "−" : "+"}
+        <Grid container spacing={1.5}>
+          <Grid item xs={12} lg={7}>
+            <Stack spacing={1.8}>
+              <WalletConnectControl connectText="Connect wallet to begin" />
+              <Box>
+                <Typography variant="h2" sx={{ fontSize: { xs: "1.35rem", md: "1.55rem" } }}>
+                  Manage your NFTs
                 </Typography>
-              }
-            >
-              <Typography variant="subtitle2">NFT Authority Operations</Typography>
-            </AccordionSummary>
-            <AccordionDetails sx={{ pt: 0.5 }}>
+                <Typography variant="body2" color="text.secondary" mt={0.35}>
+                  Select an operation, verify the asset and authority, then approve the transaction in your wallet.
+                </Typography>
+              </Box>
+              <Card variant="outlined" elevation={0} sx={{ borderRadius: 1.5, bgcolor: "rgba(13, 30, 36, 0.82)", borderColor: "rgba(86, 242, 179, 0.28)", boxShadow: "none" }}>
+                <CardContent sx={{ p: { xs: 1.5, sm: 2 } }}>
+                  <Stack direction="row" spacing={1.25} alignItems="center" mb={1.5}>
+                    <Box sx={{ display: "grid", placeItems: "center", width: 38, height: 38, borderRadius: 1.5, color: "primary.light", bgcolor: "rgba(86, 242, 179, 0.1)" }}>
+                      <CollectionsRoundedIcon fontSize="small" />
+                    </Box>
+                    <Box>
+                      <Typography variant="subtitle1" fontWeight={700}>NFT operations</Typography>
+                      <Typography variant="body2" color="text.secondary">Mint, send, retangle, and update metadata.</Typography>
+                    </Box>
+                  </Stack>
               <NftManager holdingsState={holdingsState} />
-            </AccordionDetails>
-          </Accordion>
-
-          <Accordion
-            expanded={expandedSection === "holdings"}
-            onChange={(_event, isExpanded) => {
-              setExpandedSection(isExpanded ? "holdings" : false);
-            }}
-            disableGutters
-            sx={{
-              bgcolor: "transparent",
-              border: "1px solid",
-              borderColor: "divider",
-              borderRadius: "8px !important"
-            }}
-          >
-            <AccordionSummary
-              expandIcon={
-                <Typography color="text.secondary">
-                  {expandedSection === "holdings" ? "−" : "+"}
-                </Typography>
-              }
-            >
-              <Typography variant="subtitle2">Holdings</Typography>
-            </AccordionSummary>
-            <AccordionDetails sx={{ pt: 0.5 }}>
+                </CardContent>
+              </Card>
+            </Stack>
+          </Grid>
+          <Grid item xs={12} lg={5}>
+            <Box sx={{ position: { lg: "sticky" }, top: { lg: 24 }, maxHeight: { lg: "calc(100vh - 48px)" }, overflowY: { lg: "auto" }, pr: { lg: 0.5 } }}>
               <HoldingsPanel holdingsState={holdingsState} />
-            </AccordionDetails>
-          </Accordion>
-        </Stack>
+            </Box>
+          </Grid>
+        </Grid>
       </CardContent>
     </Card>
   );
