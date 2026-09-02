@@ -2,7 +2,9 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import { WalletSection } from "@/components/wallet/wallet-section";
 import { WorkspaceHeaderActions } from "@/components/navigation/workspace-header-actions";
-import { Box, Card, CardContent, Chip, Container, Stack, Typography } from "@mui/material";
+import CheckCircleRoundedIcon from "@mui/icons-material/CheckCircleRounded";
+import ShieldRoundedIcon from "@mui/icons-material/ShieldRounded";
+import { Box, Card, CardContent, Chip, Container, Grid, Stack, Typography } from "@mui/material";
 
 export const metadata: Metadata = {
   title: "Grape Identity",
@@ -35,15 +37,16 @@ export default function IdentityPage() {
   return (
     <Container maxWidth="xl" sx={{ py: { xs: 2.5, md: 5 } }}>
       <Card
-        className="fx-enter fx-shell fx-glow"
+        className="fx-enter fx-shell"
         sx={{
-          borderRadius: 2.5,
+          borderRadius: { xs: 2.5, md: 3.5 },
           border: "1px solid",
-          borderColor: "divider",
+          borderColor: "rgba(120, 183, 255, 0.2)",
           position: "relative",
           overflow: "hidden",
           background:
-            "linear-gradient(130deg, rgba(8, 25, 35, 0.97), rgba(10, 20, 29, 0.95) 56%, rgba(13, 32, 42, 0.95))"
+            "linear-gradient(125deg, rgba(8, 23, 31, 0.98), rgba(9, 18, 25, 0.97) 55%, rgba(10, 35, 36, 0.96))",
+          boxShadow: "0 30px 80px rgba(0, 0, 0, 0.46)"
         }}
       >
         <Box
@@ -51,43 +54,45 @@ export default function IdentityPage() {
             position: "absolute",
             inset: 0,
             background:
-              "radial-gradient(circle at 14% 16%, rgba(120, 183, 255, 0.2), transparent 38%), radial-gradient(circle at 86% 20%, rgba(86, 242, 179, 0.15), transparent 34%)",
+              "radial-gradient(circle at 8% 12%, rgba(120, 183, 255, 0.24), transparent 34%), radial-gradient(circle at 91% 15%, rgba(86, 242, 179, 0.2), transparent 32%)",
             pointerEvents: "none"
           }}
         />
-        <CardContent sx={{ p: { xs: 2.5, md: 3 } }}>
-          <Stack spacing={1.4} sx={{ position: "relative", zIndex: 1 }}>
-            <Stack
-              direction={{ xs: "column", sm: "row" }}
-              spacing={1}
-              alignItems={{ sm: "center" }}
-              useFlexGap
-              flexWrap="wrap"
-            >
-              <Typography variant="overline" color="secondary.light">
-                Grape Identity
-              </Typography>
-            </Stack>
-            <Typography
-              variant="h1"
-              sx={{ fontSize: { xs: "1.95rem", md: "2.7rem" }, lineHeight: 1.05, maxWidth: "24ch" }}
-            >
-              Wallet Operations Command Center
-            </Typography>
-            <Typography color="text.secondary" sx={{ maxWidth: 860 }}>
-              Operational workspace for simulation, transfers, approvals, staking, rent recovery,
-              and program buffer workflows with unified RPC and wallet controls.
-            </Typography>
-            <WorkspaceHeaderActions
-              currentRoute="identity"
-              installAppName="Grape Identity"
-              installButtonLabel="Install Identity App"
-            />
-            <Stack direction={{ xs: "column", sm: "row" }} spacing={1} useFlexGap flexWrap="wrap">
-              <Chip label="Mainnet Operations" variant="outlined" color="secondary" />
-              <Chip label="Identity + Governance Tooling" variant="outlined" color="secondary" />
-            </Stack>
-          </Stack>
+        <CardContent sx={{ p: { xs: 2.5, sm: 3.5, md: 5 } }}>
+          <Grid container spacing={{ xs: 3, md: 5 }} alignItems="center" sx={{ position: "relative", zIndex: 1 }}>
+            <Grid item xs={12} md={8}>
+              <Stack spacing={2}>
+                <Chip icon={<ShieldRoundedIcon />} label="Your Solana safety workspace" color="primary" variant="outlined" sx={{ alignSelf: "flex-start", bgcolor: "rgba(86, 242, 179, 0.06)" }} />
+                <Typography variant="h1" sx={{ fontSize: { xs: "2.25rem", sm: "3.2rem", md: "4rem" }, lineHeight: 0.98, maxWidth: "15ch", letterSpacing: "-0.045em" }}>
+                  Understand and control your{" "}
+                  <Box component="span" sx={{ color: "primary.light", textShadow: "0 0 32px rgba(86, 242, 179, 0.24)" }}>
+                    on-chain identity.
+                  </Box>
+                </Typography>
+                <Typography color="text.secondary" sx={{ maxWidth: 720, fontSize: { xs: "1rem", md: "1.1rem" }, lineHeight: 1.7 }}>
+                  See what your wallet owns, who has authority, and what needs attention—then simulate every sensitive action before you sign.
+                </Typography>
+                <WorkspaceHeaderActions currentRoute="identity" installAppName="Grape Identity" installButtonLabel="Install Identity App" />
+              </Stack>
+            </Grid>
+            <Grid item xs={12} md={4}>
+              <Card variant="outlined" sx={{ borderRadius: 2.5, bgcolor: "rgba(5, 14, 18, 0.58)", backdropFilter: "blur(16px)", boxShadow: "none" }}>
+                <CardContent sx={{ p: 2.25 }}>
+                  <Typography variant="overline" color="secondary.light">A safer flow</Typography>
+                  <Stack spacing={1.35} mt={1.2}>
+                    {["Connect and inspect", "Review risks and permissions", "Simulate before signing"].map((label, index) => (
+                      <Stack key={label} direction="row" spacing={1.1} alignItems="center">
+                        <Box sx={{ display: "grid", placeItems: "center", width: 30, height: 30, borderRadius: "50%", color: "primary.light", bgcolor: "rgba(86, 242, 179, 0.1)" }}>
+                          {index === 2 ? <CheckCircleRoundedIcon sx={{ fontSize: 17 }} /> : <Typography variant="caption" fontWeight={700}>{index + 1}</Typography>}
+                        </Box>
+                        <Typography variant="body2">{label}</Typography>
+                      </Stack>
+                    ))}
+                  </Stack>
+                </CardContent>
+              </Card>
+            </Grid>
+          </Grid>
         </CardContent>
       </Card>
 
