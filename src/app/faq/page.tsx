@@ -299,7 +299,7 @@ export default function FaqPage() {
 
       <Box mt={{ xs: 3, md: 4 }} mb={2}>
         <Typography variant="overline" color="secondary.light">Browse by topic</Typography>
-        <Typography variant="h2" sx={{ fontSize: { xs: "1.6rem", md: "2rem" }, mt: 0.4 }}>Protocol answers, in plain language</Typography>
+        <Typography variant="h2" sx={{ fontSize: { xs: "1.6rem", md: "2rem" }, mt: 0.4 }}>FAQ</Typography>
       </Box>
       <Grid container spacing={2} alignItems="flex-start">
         {faqSections.map((section) => (
