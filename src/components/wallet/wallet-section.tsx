@@ -14,6 +14,19 @@ import {
   Stack,
   Typography
 } from "@mui/material";
+import AccountTreeRoundedIcon from "@mui/icons-material/AccountTreeRounded";
+import AutoFixHighRoundedIcon from "@mui/icons-material/AutoFixHighRounded";
+import ContactsRoundedIcon from "@mui/icons-material/ContactsRounded";
+import DataObjectRoundedIcon from "@mui/icons-material/DataObjectRounded";
+import HealthAndSafetyRoundedIcon from "@mui/icons-material/HealthAndSafetyRounded";
+import HubRoundedIcon from "@mui/icons-material/HubRounded";
+import MemoryRoundedIcon from "@mui/icons-material/MemoryRounded";
+import RedeemRoundedIcon from "@mui/icons-material/RedeemRounded";
+import SavingsRoundedIcon from "@mui/icons-material/SavingsRounded";
+import SecurityRoundedIcon from "@mui/icons-material/SecurityRounded";
+import SwapHorizRoundedIcon from "@mui/icons-material/SwapHorizRounded";
+import type { SvgIconComponent } from "@mui/icons-material";
+import type { ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { AddressBookManager } from "@/components/wallet/address-book-manager";
@@ -36,6 +49,77 @@ import { useWalletHoldings } from "@/hooks/use-wallet-holdings";
 type WalletSectionProps = {
   enableJupiterSwapRouter?: boolean;
 };
+
+type IdentityToolAccordionProps = {
+  description: string;
+  expanded: boolean;
+  icon: SvgIconComponent;
+  label: string;
+  onChange: (expanded: boolean) => void;
+  children: ReactNode;
+};
+
+function IdentityToolAccordion({
+  children,
+  description,
+  expanded,
+  icon: Icon,
+  label,
+  onChange
+}: IdentityToolAccordionProps) {
+  return (
+    <Accordion
+      expanded={expanded}
+      onChange={(_event, isExpanded) => onChange(isExpanded)}
+      disableGutters
+      elevation={0}
+      sx={{
+        bgcolor: expanded ? "rgba(13, 30, 36, 0.92)" : "rgba(9, 18, 23, 0.54)",
+        border: "1px solid",
+        borderColor: expanded ? "rgba(86, 242, 179, 0.34)" : "divider",
+        borderRadius: "12px !important",
+        overflow: "hidden",
+        transition: "border-color 180ms ease, background-color 180ms ease",
+        "&::before": { display: "none" }
+      }}
+    >
+      <AccordionSummary
+        expandIcon={
+          <Typography color={expanded ? "primary.light" : "text.secondary"} aria-hidden>
+            {expanded ? "−" : "+"}
+          </Typography>
+        }
+        sx={{ px: { xs: 1.5, sm: 2 }, py: 0.45, minHeight: 68 }}
+      >
+        <Stack direction="row" spacing={1.35} alignItems="center">
+          <Box
+            sx={{
+              display: "grid",
+              placeItems: "center",
+              width: 38,
+              height: 38,
+              flex: "0 0 auto",
+              borderRadius: 1.5,
+              color: expanded ? "primary.light" : "secondary.light",
+              bgcolor: expanded ? "rgba(86, 242, 179, 0.11)" : "rgba(120, 183, 255, 0.08)"
+            }}
+          >
+            <Icon fontSize="small" />
+          </Box>
+          <Box>
+            <Typography variant="subtitle2">{label}</Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.2 }}>
+              {description}
+            </Typography>
+          </Box>
+        </Stack>
+      </AccordionSummary>
+      <AccordionDetails sx={{ px: { xs: 1.5, sm: 2 }, pt: 0.5, pb: 2 }}>
+        {children}
+      </AccordionDetails>
+    </Accordion>
+  );
+}
 
 export function WalletSection({
   enableJupiterSwapRouter = false
@@ -227,6 +311,25 @@ export function WalletSection({
     securityPolicy
   ]);
 
+  const openTool = (tool: string) => {
+    setExpandedTool(tool);
+    window.requestAnimationFrame(() => {
+      document.getElementById(`identity-tool-${tool}`)?.scrollIntoView({
+        behavior: "smooth",
+        block: "center"
+      });
+    });
+  };
+
+  const toolShortcuts = [
+    { id: "transact", label: "Send & simulate", icon: SwapHorizRoundedIcon },
+    { id: "approval-risk", label: "Scan approvals", icon: SecurityRoundedIcon },
+    { id: "incident-response", label: "Secure wallet", icon: HealthAndSafetyRoundedIcon },
+    { id: "address-book", label: "Address book", icon: ContactsRoundedIcon },
+    { id: "staking", label: "Staking", icon: SavingsRoundedIcon },
+    { id: "recovery", label: "Recover rent", icon: AutoFixHighRoundedIcon }
+  ];
+
   return (
     <Card
       id="identity"
@@ -242,33 +345,39 @@ export function WalletSection({
         <Grid container spacing={1.5}>
           <Grid item xs={12} lg={7}>
             <Stack spacing={1.8}>
-              <Box>
-                <Typography variant="overline" color="primary.light">
-                  Identity
-                </Typography>
-                <Typography variant="h2" sx={{ fontSize: { xs: "1.55rem", md: "1.95rem" }, mt: 0.4 }}>
-                  Wallet Console
-                </Typography>
-                <Typography color="text.secondary" mt={0.8}>
-                  Transaction tools for SOL and SPL operations, plus RPC routing
-                  and account lifecycle controls.
-                </Typography>
-                <Box mt={1.1}>
-                  <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
-                    <Button variant="outlined" size="small" href="/token">
-                      Open Token Tools
-                    </Button>
-                    <Button variant="outlined" size="small" href="/nft">
-                      Open NFT Tools
-                    </Button>
-                  </Stack>
-                </Box>
-              </Box>
-
               <WalletConnectControl
-                connectText="Connect"
+                connectText="Connect wallet to begin"
                 showSecurityPolicySettings
               />
+
+              <Box>
+                <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" alignItems={{ sm: "center" }} spacing={1} mb={1}>
+                  <Box>
+                    <Typography variant="h2" sx={{ fontSize: { xs: "1.35rem", md: "1.55rem" } }}>
+                      What do you want to do?
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" mt={0.35}>
+                      Jump to a common task or browse the full toolkit below.
+                    </Typography>
+                  </Box>
+                  <Stack direction="row" spacing={0.75}>
+                    <Button variant="text" size="small" href="/token">Token tools</Button>
+                    <Button variant="text" size="small" href="/nft">NFT tools</Button>
+                  </Stack>
+                </Stack>
+                <Grid container spacing={1}>
+                  {toolShortcuts.map((tool) => {
+                    const Icon = tool.icon;
+                    return (
+                      <Grid item xs={6} sm={4} key={tool.id}>
+                        <Button fullWidth variant={expandedTool === tool.id ? "contained" : "outlined"} onClick={() => openTool(tool.id)} startIcon={<Icon fontSize="small" />} sx={{ justifyContent: "flex-start", minHeight: 44, px: 1.25 }}>
+                          {tool.label}
+                        </Button>
+                      </Grid>
+                    );
+                  })}
+                </Grid>
+              </Box>
 
               <Card
                 variant="outlined"
@@ -327,237 +436,94 @@ export function WalletSection({
                         label={`NFT Delegate Exposure: ${securitySnapshot.nftDelegateExposure}`}
                       />
                     </Stack>
-                    <Alert severity={securitySnapshot.severity}>
-                      Score is derived from active delegate permissions and external close
-                      authorities. Use Approval Risk Scanner to reduce exposure.
+                    <Alert severity={securitySnapshot.severity} action={<Button color="inherit" size="small" onClick={() => openTool("approval-risk")}>Review</Button>}>
+                      Based on active delegate permissions and external close authorities.
                     </Alert>
                   </Stack>
                 </CardContent>
               </Card>
 
-              <Accordion
-                expanded={expandedTool === "transact"}
-                onChange={(_event, isExpanded) => {
-                  setExpandedTool(isExpanded ? "transact" : false);
-                }}
-                disableGutters
-                sx={{ bgcolor: "transparent", border: "1px solid", borderColor: "divider", borderRadius: "8px !important" }}
-              >
-                <AccordionSummary
-                  expandIcon={<Typography color="text.secondary">{expandedTool === "transact" ? "−" : "+"}</Typography>}
-                >
-                  <Typography variant="subtitle2">Transact + Simulation</Typography>
-                </AccordionSummary>
-                <AccordionDetails sx={{ pt: 0.5 }}>
+              <Box id="identity-tool-transact">
+                <IdentityToolAccordion label="Send & simulate" description="Build, preview, and submit SOL or token transactions." icon={SwapHorizRoundedIcon} expanded={expandedTool === "transact"} onChange={(open) => setExpandedTool(open ? "transact" : false)}>
                   <IdentityActions holdingsState={holdingsState} />
-                </AccordionDetails>
-              </Accordion>
+                </IdentityToolAccordion>
+              </Box>
 
-              <Accordion
-                expanded={expandedTool === "approval-risk"}
-                onChange={(_event, isExpanded) => {
-                  setExpandedTool(isExpanded ? "approval-risk" : false);
-                }}
-                disableGutters
-                sx={{ bgcolor: "transparent", border: "1px solid", borderColor: "divider", borderRadius: "8px !important" }}
-              >
-                <AccordionSummary
-                  expandIcon={<Typography color="text.secondary">{expandedTool === "approval-risk" ? "−" : "+"}</Typography>}
-                >
-                  <Typography variant="subtitle2">Approval Risk Scanner</Typography>
-                </AccordionSummary>
-                <AccordionDetails sx={{ pt: 0.5 }}>
+              <Box id="identity-tool-approval-risk">
+                <IdentityToolAccordion label="Approval risk scanner" description="Find and revoke risky token and NFT delegate permissions." icon={SecurityRoundedIcon} expanded={expandedTool === "approval-risk"} onChange={(open) => setExpandedTool(open ? "approval-risk" : false)}>
                   <ApprovalRiskScanner holdingsState={holdingsState} />
-                </AccordionDetails>
-              </Accordion>
+                </IdentityToolAccordion>
+              </Box>
 
-              <Accordion
-                expanded={expandedTool === "incident-response"}
-                onChange={(_event, isExpanded) => {
-                  setExpandedTool(isExpanded ? "incident-response" : false);
-                }}
-                disableGutters
-                sx={{ bgcolor: "transparent", border: "1px solid", borderColor: "divider", borderRadius: "8px !important" }}
-              >
-                <AccordionSummary
-                  expandIcon={<Typography color="text.secondary">{expandedTool === "incident-response" ? "−" : "+"}</Typography>}
-                >
-                  <Typography variant="subtitle2">Incident Response</Typography>
-                </AccordionSummary>
-                <AccordionDetails sx={{ pt: 0.5 }}>
+              <Box id="identity-tool-incident-response">
+                <IdentityToolAccordion label="Incident response" description="Build an emergency plan for a wallet that may be compromised." icon={HealthAndSafetyRoundedIcon} expanded={expandedTool === "incident-response"} onChange={(open) => setExpandedTool(open ? "incident-response" : false)}>
                   <IncidentResponseMode holdingsState={holdingsState} />
-                </AccordionDetails>
-              </Accordion>
+                </IdentityToolAccordion>
+              </Box>
 
-              <Accordion
-                expanded={expandedTool === "address-book"}
-                onChange={(_event, isExpanded) => {
-                  setExpandedTool(isExpanded ? "address-book" : false);
-                }}
-                disableGutters
-                sx={{ bgcolor: "transparent", border: "1px solid", borderColor: "divider", borderRadius: "8px !important" }}
-              >
-                <AccordionSummary
-                  expandIcon={<Typography color="text.secondary">{expandedTool === "address-book" ? "−" : "+"}</Typography>}
-                >
-                  <Typography variant="subtitle2">Address Book + Labels</Typography>
-                </AccordionSummary>
-                <AccordionDetails sx={{ pt: 0.5 }}>
+              <Box id="identity-tool-address-book">
+                <IdentityToolAccordion label="Address book & labels" description="Save trusted addresses and make transaction targets recognizable." icon={ContactsRoundedIcon} expanded={expandedTool === "address-book"} onChange={(open) => setExpandedTool(open ? "address-book" : false)}>
                   <AddressBookManager holdingsState={holdingsState} />
-                </AccordionDetails>
-              </Accordion>
+                </IdentityToolAccordion>
+              </Box>
 
-              <Accordion
-                expanded={expandedTool === "delegate-explorer"}
-                onChange={(_event, isExpanded) => {
-                  setExpandedTool(isExpanded ? "delegate-explorer" : false);
-                }}
-                disableGutters
-                sx={{ bgcolor: "transparent", border: "1px solid", borderColor: "divider", borderRadius: "8px !important" }}
-              >
-                <AccordionSummary
-                  expandIcon={<Typography color="text.secondary">{expandedTool === "delegate-explorer" ? "−" : "+"}</Typography>}
-                >
-                  <Typography variant="subtitle2">Delegate Explorer</Typography>
-                </AccordionSummary>
-                <AccordionDetails sx={{ pt: 0.5 }}>
+              <Box id="identity-tool-delegate-explorer">
+                <IdentityToolAccordion label="Delegate explorer" description="Inspect delegated access across the connected wallet." icon={AccountTreeRoundedIcon} expanded={expandedTool === "delegate-explorer"} onChange={(open) => setExpandedTool(open ? "delegate-explorer" : false)}>
                   <DelegateExplorer holdingsState={holdingsState} />
-                </AccordionDetails>
-              </Accordion>
+                </IdentityToolAccordion>
+              </Box>
 
-              <Accordion
-                expanded={expandedTool === "authority-map"}
-                onChange={(_event, isExpanded) => {
-                  setExpandedTool(isExpanded ? "authority-map" : false);
-                }}
-                disableGutters
-                sx={{ bgcolor: "transparent", border: "1px solid", borderColor: "divider", borderRadius: "8px !important" }}
-              >
-                <AccordionSummary
-                  expandIcon={<Typography color="text.secondary">{expandedTool === "authority-map" ? "−" : "+"}</Typography>}
-                >
-                  <Typography variant="subtitle2">Signer + Authority Map</Typography>
-                </AccordionSummary>
-                <AccordionDetails sx={{ pt: 0.5 }}>
+              <Box id="identity-tool-authority-map">
+                <IdentityToolAccordion label="Signer & authority map" description="Understand who can sign, upgrade, mint, or close accounts." icon={HubRoundedIcon} expanded={expandedTool === "authority-map"} onChange={(open) => setExpandedTool(open ? "authority-map" : false)}>
                   <SignerAuthorityMap holdingsState={holdingsState} />
-                </AccordionDetails>
-              </Accordion>
+                </IdentityToolAccordion>
+              </Box>
 
               {enableJupiterSwapRouter ? (
-                <Accordion
-                  expanded={expandedTool === "swap-router"}
-                  onChange={(_event, isExpanded) => {
-                    setExpandedTool(isExpanded ? "swap-router" : false);
-                  }}
-                  disableGutters
-                  sx={{ bgcolor: "transparent", border: "1px solid", borderColor: "divider", borderRadius: "8px !important" }}
-                >
-                  <AccordionSummary
-                    expandIcon={<Typography color="text.secondary">{expandedTool === "swap-router" ? "−" : "+"}</Typography>}
-                  >
-                    <Typography variant="subtitle2">Jupiter Swap Router</Typography>
-                  </AccordionSummary>
-                  <AccordionDetails sx={{ pt: 0.5 }}>
+                <Box id="identity-tool-swap-router">
+                  <IdentityToolAccordion label="Jupiter swap router" description="Quote and route token swaps through Jupiter." icon={SwapHorizRoundedIcon} expanded={expandedTool === "swap-router"} onChange={(open) => setExpandedTool(open ? "swap-router" : false)}>
                     <JupiterSwapRouter holdingsState={holdingsState} />
-                  </AccordionDetails>
-                </Accordion>
+                  </IdentityToolAccordion>
+                </Box>
               ) : null}
 
-              <Accordion
-                expanded={expandedTool === "staking"}
-                onChange={(_event, isExpanded) => {
-                  setExpandedTool(isExpanded ? "staking" : false);
-                }}
-                disableGutters
-                sx={{ bgcolor: "transparent", border: "1px solid", borderColor: "divider", borderRadius: "8px !important" }}
-              >
-                <AccordionSummary
-                  expandIcon={<Typography color="text.secondary">{expandedTool === "staking" ? "−" : "+"}</Typography>}
-                >
-                  <Typography variant="subtitle2">Staking</Typography>
-                </AccordionSummary>
-                <AccordionDetails sx={{ pt: 0.5 }}>
+              <Box id="identity-tool-staking">
+                <IdentityToolAccordion label="Staking" description="Review and manage staking positions from one workspace." icon={SavingsRoundedIcon} expanded={expandedTool === "staking"} onChange={(open) => setExpandedTool(open ? "staking" : false)}>
                   <StakingConsole />
-                </AccordionDetails>
-              </Accordion>
+                </IdentityToolAccordion>
+              </Box>
 
-              <Accordion
-                expanded={expandedTool === "signature-decoder"}
-                onChange={(_event, isExpanded) => {
-                  setExpandedTool(isExpanded ? "signature-decoder" : false);
-                }}
-                disableGutters
-                sx={{ bgcolor: "transparent", border: "1px solid", borderColor: "divider", borderRadius: "8px !important" }}
-              >
-                <AccordionSummary
-                  expandIcon={<Typography color="text.secondary">{expandedTool === "signature-decoder" ? "−" : "+"}</Typography>}
-                >
-                  <Typography variant="subtitle2">Signature Decoder</Typography>
-                </AccordionSummary>
-                <AccordionDetails sx={{ pt: 0.5 }}>
+              <Box id="identity-tool-signature-decoder">
+                <IdentityToolAccordion label="Signature decoder" description="Inspect transaction signatures and human-readable instructions." icon={DataObjectRoundedIcon} expanded={expandedTool === "signature-decoder"} onChange={(open) => setExpandedTool(open ? "signature-decoder" : false)}>
                   <SignatureDecoder />
-                </AccordionDetails>
-              </Accordion>
+                </IdentityToolAccordion>
+              </Box>
 
-              <Accordion
-                expanded={expandedTool === "recovery"}
-                onChange={(_event, isExpanded) => {
-                  setExpandedTool(isExpanded ? "recovery" : false);
-                }}
-                disableGutters
-                sx={{ bgcolor: "transparent", border: "1px solid", borderColor: "divider", borderRadius: "8px !important" }}
-              >
-                <AccordionSummary
-                  expandIcon={<Typography color="text.secondary">{expandedTool === "recovery" ? "−" : "+"}</Typography>}
-                >
-                  <Typography variant="subtitle2">Rent Recovery Sweeper</Typography>
-                </AccordionSummary>
-                <AccordionDetails sx={{ pt: 0.5 }}>
+              <Box id="identity-tool-recovery">
+                <IdentityToolAccordion label="Rent recovery sweeper" description="Close eligible empty accounts and reclaim locked SOL." icon={AutoFixHighRoundedIcon} expanded={expandedTool === "recovery"} onChange={(open) => setExpandedTool(open ? "recovery" : false)}>
                   <RentRecoverySweeper holdingsState={holdingsState} />
-                </AccordionDetails>
-              </Accordion>
+                </IdentityToolAccordion>
+              </Box>
 
-              <Accordion
-                expanded={expandedTool === "program-buffers"}
-                onChange={(_event, isExpanded) => {
-                  setExpandedTool(isExpanded ? "program-buffers" : false);
-                }}
-                disableGutters
-                sx={{ bgcolor: "transparent", border: "1px solid", borderColor: "divider", borderRadius: "8px !important" }}
-              >
-                <AccordionSummary
-                  expandIcon={<Typography color="text.secondary">{expandedTool === "program-buffers" ? "−" : "+"}</Typography>}
-                >
-                  <Typography variant="subtitle2">Program Buffers</Typography>
-                </AccordionSummary>
-                <AccordionDetails sx={{ pt: 0.5 }}>
+              <Box id="identity-tool-program-buffers">
+                <IdentityToolAccordion label="Program buffers" description="Review and close upgradeable-program buffer accounts." icon={MemoryRoundedIcon} expanded={expandedTool === "program-buffers"} onChange={(open) => setExpandedTool(open ? "program-buffers" : false)}>
                   <ProgramBuffersManager />
-                </AccordionDetails>
-              </Accordion>
+                </IdentityToolAccordion>
+              </Box>
 
-              <Accordion
-                expanded={expandedTool === "claim-rounds"}
-                onChange={(_event, isExpanded) => {
-                  setExpandedTool(isExpanded ? "claim-rounds" : false);
-                }}
-                disableGutters
-                sx={{ bgcolor: "transparent", border: "1px solid", borderColor: "divider", borderRadius: "8px !important" }}
-              >
-                <AccordionSummary
-                  expandIcon={<Typography color="text.secondary">{expandedTool === "claim-rounds" ? "−" : "+"}</Typography>}
-                >
-                  <Typography variant="subtitle2">Claim Round Manager</Typography>
-                </AccordionSummary>
-                <AccordionDetails sx={{ pt: 0.5 }}>
+              <Box id="identity-tool-claim-rounds">
+                <IdentityToolAccordion label="Claim round manager" description="Create and administer token distribution claim rounds." icon={RedeemRoundedIcon} expanded={expandedTool === "claim-rounds"} onChange={(open) => setExpandedTool(open ? "claim-rounds" : false)}>
                   <ClaimRoundManager />
-                </AccordionDetails>
-              </Accordion>
+                </IdentityToolAccordion>
+              </Box>
 
             </Stack>
           </Grid>
 
           <Grid item xs={12} lg={5}>
-            <HoldingsPanel holdingsState={holdingsState} />
+            <Box sx={{ position: { lg: "sticky" }, top: { lg: 24 }, maxHeight: { lg: "calc(100vh - 48px)" }, overflowY: { lg: "auto" }, pr: { lg: 0.5 } }}>
+              <HoldingsPanel holdingsState={holdingsState} />
+            </Box>
           </Grid>
         </Grid>
       </CardContent>
