@@ -21,24 +21,24 @@ export function MuiThemeProvider({ children }: MuiThemeProviderProps) {
           palette: {
             mode: "dark",
             primary: {
-              main: "#56f2b3",
-              light: "#9dffd7",
-              dark: "#2ca579"
+              main: "#1dd79b",
+              light: "#74e9c3",
+              dark: "#33a382"
             },
             secondary: {
-              main: "#78b7ff"
+              main: "#86b8b6"
             },
             text: {
-              primary: "#edf7f3",
-              secondary: "#97b0a8"
+              primary: "#e5ebe9",
+              secondary: "#a0aaa6"
             },
             background: {
-              default: "#070c10",
-              paper: "#0f171d"
+              default: "#141816",
+              paper: "#1e2423"
             }
           },
           shape: {
-            borderRadius: 8
+            borderRadius: 6
           },
           typography: {
             fontFamily: "var(--font-display), sans-serif",
@@ -67,8 +67,8 @@ export function MuiThemeProvider({ children }: MuiThemeProviderProps) {
             MuiCard: {
               styleOverrides: {
                 root: {
-                  border: "1px solid rgba(147, 168, 161, 0.14)",
-                  boxShadow: "0 14px 34px rgba(0, 0, 0, 0.4)"
+                  border: "1px solid #343a37",
+                  boxShadow: "none"
                 }
               }
             },
@@ -87,7 +87,7 @@ export function MuiThemeProvider({ children }: MuiThemeProviderProps) {
                   transition: "transform 180ms ease, box-shadow 180ms ease"
                 },
                 contained: {
-                  boxShadow: "0 0 0 1px rgba(95, 211, 162, 0.35) inset"
+                  boxShadow: "none"
                 }
               }
             },
@@ -114,22 +114,7 @@ export function MuiThemeProvider({ children }: MuiThemeProviderProps) {
           },
           body: {
             margin: 0,
-            backgroundSize: "160% 160%",
-            animation: "adminBgShift 20s ease-in-out infinite",
-            background:
-              "radial-gradient(circle at 10% 6%, rgba(120, 183, 255, 0.22), transparent 36%), radial-gradient(circle at 92% 0%, rgba(86, 242, 179, 0.2), transparent 34%), radial-gradient(circle at 80% 70%, rgba(117, 82, 255, 0.08), transparent 44%), linear-gradient(180deg, #070c10 0%, #080f13 52%, #070b0f 100%)"
-          },
-          "body::after": {
-            content: "\"\"",
-            position: "fixed",
-            inset: 0,
-            pointerEvents: "none",
-            backgroundImage:
-              "linear-gradient(rgba(157, 255, 215, 0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(157, 255, 215, 0.04) 1px, transparent 1px)",
-            backgroundSize: "36px 36px",
-            maskImage:
-              "radial-gradient(circle at 20% 20%, black, transparent 72%)",
-            opacity: 0.22
+            background: "#141816"
           },
           ".fx-enter": {
             animation: "fxEnter 560ms cubic-bezier(0.2, 0.8, 0.2, 1) both"
@@ -154,7 +139,7 @@ export function MuiThemeProvider({ children }: MuiThemeProviderProps) {
             background:
               "linear-gradient(120deg, transparent 10%, rgba(95, 211, 162, 0.08) 45%, transparent 70%)",
             transform: "translateX(-120%)",
-            animation: "fxSweep 9s ease-in-out infinite",
+            animation: "none",
             pointerEvents: "none"
           },
           ".fx-glow": {
@@ -212,7 +197,13 @@ export function MuiThemeProvider({ children }: MuiThemeProviderProps) {
             filter: "none"
           },
           ".fx-pulse": {
-            animation: "fxPulse 3.4s ease-in-out infinite"
+            animation: "none"
+          },
+          "@media (prefers-reduced-motion: reduce)": {
+            "*, *::before, *::after": {
+              animation: "none !important",
+              transition: "none !important"
+            }
           },
           "@keyframes fxEnter": {
             "0%": {

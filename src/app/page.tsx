@@ -1,877 +1,99 @@
-import { grapeBots, grapeLinks, grapeProducts } from "@/lib/grape";
-import { LiveSignalsPanel } from "@/components/solana/live-signals-panel";
-import { RotatingTagline } from "@/components/brand/rotating-tagline";
-import GitHubIcon from "@mui/icons-material/GitHub";
 import Image from "next/image";
-import grapeWalletPreview from "@/public/images/grape_wallet_preview.png";
-import grapeWalletPreview2 from "@/public/images/grape_wallet_preview2.png";
-import {
-  Avatar,
-  Box,
-  Button,
-  Card,
-  CardContent,
-  Chip,
-  Container,
-  Grid,
-  IconButton,
-  Stack,
-  SvgIcon,
-  type SvgIconProps,
-  Tooltip,
-  Typography
-} from "@mui/material";
+import Link from "next/link";
+import FingerprintIcon from "@mui/icons-material/Fingerprint";
+import TokenIcon from "@mui/icons-material/Token";
+import CollectionsOutlinedIcon from "@mui/icons-material/CollectionsOutlined";
+import { ProgramAddress } from "@/components/brand/program-address";
+import { LiveSignalsPanel } from "@/components/solana/live-signals-panel";
+import { grapeBots, grapeLinks, grapeProducts } from "@/lib/grape";
+import grapeAvatar from "@/public/images/grape-avatar.png";
+import walletUnlockPreview from "@/public/images/grape_wallet_preview.png";
+import walletPreview from "@/public/images/grape_wallet_preview2.png";
 
-function DiscordLogoIcon(props: SvgIconProps) {
-  return (
-    <SvgIcon {...props} viewBox="0 0 24 24">
-      <path d="M20.317 4.369A19.791 19.791 0 0 0 15.885 3c-.191.34-.403.8-.553 1.165a18.27 18.27 0 0 0-6.664 0A12.64 12.64 0 0 0 8.115 3a19.736 19.736 0 0 0-4.433 1.369C.533 9.045-.32 13.579.099 18.057a19.9 19.9 0 0 0 5.993 3.043c.476-.648.9-1.336 1.27-2.056-.697-.263-1.365-.59-1.996-.972.167-.122.331-.249.49-.379 3.85 1.77 8.03 1.77 11.833 0 .16.13.324.257.49.379-.631.382-1.3.709-1.997.972.37.72.794 1.408 1.27 2.056a19.843 19.843 0 0 0 5.993-3.043c.5-5.177-.838-9.67-3.128-13.688zM8.02 15.331c-1.183 0-2.157-1.086-2.157-2.419 0-1.334.955-2.419 2.157-2.419 1.212 0 2.176 1.095 2.157 2.419 0 1.333-.955 2.419-2.157 2.419zm7.975 0c-1.183 0-2.157-1.086-2.157-2.419 0-1.334.955-2.419 2.157-2.419 1.212 0 2.176 1.095 2.157 2.419 0 1.333-.945 2.419-2.157 2.419z" />
-    </SvgIcon>
-  );
-}
-
-function XLogoIcon(props: SvgIconProps) {
-  return (
-    <SvgIcon {...props} viewBox="0 0 24 24">
-      <path d="M18.244 2H21.5l-7.12 8.134L22.75 22h-6.56l-5.14-6.74L5.16 22H1.9l7.62-8.71L1.25 2h6.73l4.65 6.14L18.24 2zm-1.15 18h1.8L7.04 3.9H5.1L17.09 20z" />
-    </SvgIcon>
-  );
-}
+const tools = [
+  { href: "/identity", name: "Identity", icon: FingerprintIcon, detail: "Your wallet, holdings, and on-chain identity." },
+  { href: "/token", name: "Token tools", icon: TokenIcon, detail: "Create, distribute, and manage your tokens." },
+  { href: "/nft", name: "NFT tools", icon: CollectionsOutlinedIcon, detail: "Manage collections and digital assets." }
+];
 
 export default function Home() {
-  const accentGradients = [
-    "linear-gradient(160deg, rgba(48, 84, 104, 0.7), rgba(17, 27, 34, 0.92))",
-    "linear-gradient(160deg, rgba(33, 96, 84, 0.7), rgba(12, 24, 30, 0.92))",
-    "linear-gradient(160deg, rgba(77, 64, 118, 0.68), rgba(15, 24, 34, 0.92))",
-    "linear-gradient(160deg, rgba(38, 85, 112, 0.68), rgba(11, 23, 31, 0.92))"
-  ];
-  const grapeFlow = [
-    {
-      title: "OG Reputation Spaces",
-      programId: "V1NE6WCWJPRiVFq5DtaN8p87M9DmmUd2zQuVbvLgQwX",
-      detail:
-        "Season-based reputation engine with DAO config, delegate award/reset controls, transfers, metadata registry, and emergency cleanup paths."
-    },
-    {
-      title: "Grape Verification",
-      programId: "VrFyyRxPoyWxpABpBXU4YUCCF9p8giDSJUv2oXfDr5q",
-      detail:
-        "Salted identity hashing, attestor-managed verification, wallet link/unlink flows, expiry checks, and freeze controls per DAO space."
-    },
-    {
-      title: "Grape Access",
-      programId: "GPASSzQQF1H8cdj5pUwFkeYEE4VdMQtCrYtUaMXvPz48",
-      detail:
-        "Composable gates for reputation, verified identities, wallet links, token/NFT holdings, multi-DAO checks, and custom program validation."
-    },
-    {
-      title: "GSPL Directory",
-      programId: "GovyJPza6EV6srUcmwA1vS3EmWGdLSkkDafRE54X1Dir",
-      detail:
-        "DAO-controlled parent/child directory listings that make communities and protocol surfaces discoverable across the governance graph."
-    }
-  ];
-  const heroTaglines = [
-    "On-chain infrastructure for internet communities",
-    "Identity, reputation, access, and governance in one stack",
-    "Composable primitives for communities that need to scale"
-  ];
-  const gettingStartedSteps = [
-    {
-      title: "Create Your OG Reputation Space",
-      detail:
-        "Create your Space, set branding, and publish your on-chain reputation hub for your community.",
-      href: "https://reputation.governance.so",
-      ctaLabel: "Open reputation.governance.so"
-    },
-    {
-      title: "Establish Your Reputation Layer",
-      detail:
-        "Reputation is your community’s trust infrastructure. Define how influence is earned, verified, and preserved — across manual awards, Discord automation, on-chain actions, and seasonal rules."
-    },
-    {
-      title: "Set Up Your Discord Bot",
-      detail:
-        "Deploy your Discord bot to automate awards, recognize participation, and connect your community activity directly to on-chain reputation."
-    }
-  ];
-  const walletPreviewShots = [
-    { src: grapeWalletPreview, alt: "Grape Wallet beta unlock screen on Android" },
-    { src: grapeWalletPreview2, alt: "Grape Wallet beta home screen on Android" }
-  ];
-
   return (
-    <Container maxWidth="xl" sx={{ py: { xs: 3, md: 6 } }}>
-      <Card
-        className="fx-enter fx-pulse fx-shell fx-glow"
-        sx={{
-          background:
-            "linear-gradient(140deg, rgba(15, 26, 34, 0.98), rgba(8, 14, 19, 0.98))",
-          borderRadius: 2.5,
-          position: "relative",
-          overflow: "hidden"
-        }}
-      >
-        <video
-          autoPlay
-          loop
-          muted
-          playsInline
-          preload="metadata"
-          style={{
-            position: "absolute",
-            inset: 0,
-            width: "100%",
-            height: "100%",
-            objectFit: "cover",
-            opacity: 0.16,
-            filter: "saturate(0.8) contrast(1.1)",
-            pointerEvents: "none"
-          }}
-        >
+    <main className="hub">
+      <header className="hub-nav hub-width">
+        <Link href="/" className="hub-brand" aria-label="Grape home">
+          <Image src={grapeAvatar} alt="" width={36} height={36} priority />
+          <span className="hub-wordmark">Grape Hub</span><span className="hub-brand-label">grapedao.org</span>
+        </Link>
+        <nav aria-label="Main navigation">
+          <a href="#ecosystem">Ecosystem</a>
+          <a href="#workspace">Workspace</a>
+          <a href={grapeLinks.docs} target="_blank" rel="noreferrer">Docs</a>
+        </nav>
+        <a className="hub-nav-cta" href={grapeLinks.discord} target="_blank" rel="noreferrer">Join Grape DAO</a>
+      </header>
+
+      <section className="hub-hero" aria-labelledby="hero-heading">
+        <video className="hub-video" autoPlay loop muted playsInline preload="metadata" aria-hidden="true">
           <source src="/images/grape_video.mp4" type="video/mp4" />
         </video>
-        <Box
-          sx={{
-            position: "absolute",
-            inset: 0,
-            background:
-              "linear-gradient(135deg, rgba(9, 15, 21, 0.88), rgba(10, 17, 23, 0.82) 45%, rgba(9, 15, 21, 0.9))",
-            pointerEvents: "none"
-          }}
-        />
-        <CardContent sx={{ p: { xs: 2.5, md: 3.5 }, position: "relative", zIndex: 1 }}>
-          <Grid container spacing={2.2}>
-            <Grid item xs={12} lg={8}>
-              <Stack spacing={1.9}>
-                <Stack
-                  direction={{ xs: "column", md: "row" }}
-                  spacing={1.2}
-                  alignItems={{ md: "center" }}
-                >
-                  <Typography variant="overline" color="primary.light">
-                    Grape Hub | grapedao.org
-                  </Typography>
-                  <RotatingTagline
-                    lines={heroTaglines}
-                    variant="overline"
-                    sx={{
-                      color: "text.secondary",
-                      letterSpacing: "0.09em",
-                      minHeight: 0
-                    }}
-                  />
-                </Stack>
-                <Typography
-                  variant="h1"
-                  sx={{
-                    maxWidth: "20ch",
-                    fontSize: { xs: "2rem", md: "3.2rem" },
-                    lineHeight: 1.05
-                  }}
-                >
-                  Identity, Reputation, Access, and{" "}
-                  <Box
-                    component="span"
-                    sx={{
-                      background:
-                        "linear-gradient(92deg, #9dffd7 8%, #78b7ff 46%, #77ffe0 100%)",
-                      backgroundClip: "text",
-                      color: "transparent"
-                    }}
-                  >
-                    Governance Infrastructure
-                  </Box>
-                </Typography>
-                <Typography color="text.secondary" sx={{ maxWidth: 760 }}>
-                  Grape is an ecosystem layer for identity, reputation, access,
-                  rewards, and governance, helping communities coordinate
-                  on-chain.
-                </Typography>
-                <Typography color="text.secondary" sx={{ maxWidth: 760 }}>
-                  Learn more in the docs and connect with the DAO on Discord.
-                </Typography>
-                <Stack spacing={1.1}>
-                  <Stack
-                    direction={{ xs: "column", sm: "row" }}
-                    spacing={1}
-                    alignItems={{ sm: "center" }}
-                    flexWrap="wrap"
-                    useFlexGap
-                  >
-                    <Button
-                      variant="contained"
-                      color="primary"
-                      href={grapeLinks.docs}
-                      target="_blank"
-                      rel="noreferrer"
-                      sx={{ width: { xs: "100%", sm: "auto" } }}
-                    >
-                      Read Docs
-                    </Button>
-                    <Stack
-                      direction="row"
-                      spacing={0.8}
-                      alignItems="center"
-                      sx={{ flexShrink: 0 }}
-                    >
-                      <Tooltip title="Join Discord">
-                        <IconButton
-                          component="a"
-                          href={grapeLinks.discord}
-                          target="_blank"
-                          rel="noreferrer"
-                          aria-label="Join Discord"
-                          color="secondary"
-                          sx={{ border: "1px solid", borderColor: "divider" }}
-                        >
-                          <DiscordLogoIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                      <Tooltip title="Follow on X">
-                        <IconButton
-                          component="a"
-                          href={grapeLinks.x}
-                          target="_blank"
-                          rel="noreferrer"
-                          aria-label="Follow on X"
-                          color="secondary"
-                          sx={{ border: "1px solid", borderColor: "divider" }}
-                        >
-                          <XLogoIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                      <Tooltip title="GitHub">
-                        <IconButton
-                          component="a"
-                          href={grapeLinks.github}
-                          target="_blank"
-                          rel="noreferrer"
-                          aria-label="GitHub"
-                          color="secondary"
-                          sx={{ border: "1px solid", borderColor: "divider" }}
-                        >
-                          <GitHubIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                    </Stack>
-                  </Stack>
-                  <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                    <Button variant="outlined" color="primary" href="/identity">
-                      Identity
-                    </Button>
-                    <Button variant="outlined" color="primary" href="/token">
-                      Token Tools
-                    </Button>
-                    <Button variant="outlined" color="primary" href="/nft">
-                      NFT Tools
-                    </Button>
-                    <Button variant="outlined" color="primary" href="/faq">
-                      FAQ
-                    </Button>
-                  </Stack>
-                </Stack>
-                <Stack direction={{ xs: "column", md: "row" }} spacing={1}>
-                  <Chip label="Programs: 6" variant="outlined" color="secondary" />
-                  <Chip label="APIs: 4" variant="outlined" color="secondary" />
-                  <Chip label="Interfaces: 5" variant="outlined" color="secondary" />
-                  <Chip label="Discord Bots: 5" variant="outlined" color="secondary" />
-                </Stack>
-              </Stack>
-            </Grid>
+        <div className="hub-hero-shade" />
+        <div className="hub-width hub-hero-content">
+          <p className="hub-eyebrow"><span className="hub-status" /> On-chain infrastructure for internet communities</p>
+          <h1 id="hero-heading">Identity, Reputation, Access, and <span>Governance Infrastructure</span></h1>
+          <p className="hub-hero-description">Grape is an ecosystem layer for identity, reputation, access, rewards, and governance, helping communities coordinate on-chain.</p>
+          <div className="hub-actions">
+            <a className="hub-button" href="#ecosystem">Explore the ecosystem </a>
+            <a className="hub-text-link" href={grapeLinks.docs} target="_blank" rel="noreferrer">Start building </a>
+          </div>
+        </div>
+        <div className="hub-hero-foot hub-width"><span><span className="hub-network"><span className="hub-status" /> Solana Mainnet</span></span><a href="#ecosystem">Identity / Reputation / Access / Governance</a></div>
+      </section>
 
-            <Grid item xs={12} lg={4}>
-              <LiveSignalsPanel />
-            </Grid>
-          </Grid>
-        </CardContent>
-      </Card>
+      <section id="workspace" className="hub-workspace hub-width" aria-label="Grape workspace">
+        <div className="hub-workspace-label"><span className="hub-eyebrow">Your workspace</span><p>Wallet operations</p></div>
+        {tools.map((tool) => <Link className="hub-tool" href={tool.href} key={tool.href}><tool.icon className="hub-tool-icon" aria-hidden="true" /><div><h2>{tool.name}</h2><p>{tool.detail}</p></div></Link>)}
+      </section>
 
-      <Box mt={3}>
-        <Card
-          className="fx-enter fx-shell"
-          sx={{
-            borderRadius: 2.5,
-            background:
-              "linear-gradient(150deg, rgba(15, 27, 36, 0.94), rgba(9, 16, 22, 0.96))"
-          }}
-        >
-          <CardContent sx={{ p: { xs: 2.2, md: 2.8 } }}>
-            <Stack spacing={1.4}>
-              <Typography variant="overline" color="primary.light">
-                Getting Started
-              </Typography>
-              <Typography variant="h2" sx={{ fontSize: { xs: "1.35rem", md: "1.75rem" } }}>
-                Launch Your Reputation Layer
-              </Typography>
-              <Typography color="text.secondary">
-                Reputation is an on-chain record of contribution that can power access, rewards, and governance.
-              </Typography>
-              <Grid container spacing={1.2}>
-                {gettingStartedSteps.map((step, index) => (
-                  <Grid item xs={12} md={4} key={step.title}>
-                    <Card
-                      variant="outlined"
-                      sx={{
-                        height: "100%",
-                        borderRadius: 1.8,
-                        background:
-                          "linear-gradient(145deg, rgba(18, 32, 42, 0.9), rgba(12, 22, 30, 0.9))",
-                        borderColor: "divider"
-                      }}
-                    >
-                      <CardContent sx={{ p: 1.3, "&:last-child": { pb: 1.3 } }}>
-                        <Stack spacing={0.8}>
-                          <Chip
-                            size="small"
-                            variant="outlined"
-                            label={`Step ${index + 1}`}
-                            sx={{ width: "fit-content" }}
-                          />
-                          <Typography variant="subtitle2">{step.title}</Typography>
-                          <Typography variant="body2" color="text.secondary">
-                            {step.detail}
-                          </Typography>
-                          {step.href ? (
-                            <Button
-                              size="small"
-                              variant="outlined"
-                              color="secondary"
-                              href={step.href}
-                              target="_blank"
-                              rel="noreferrer"
-                              sx={{ width: "fit-content" }}
-                            >
-                              {step.ctaLabel}
-                            </Button>
-                          ) : null}
-                        </Stack>
-                      </CardContent>
-                    </Card>
-                  </Grid>
-                ))}
-              </Grid>
-            </Stack>
-          </CardContent>
-        </Card>
-      </Box>
+      <section id="ecosystem" className="hub-section hub-width">
+        <div className="hub-section-heading"><div><p className="hub-eyebrow">Products</p><h2>Identity, reputation, access, and governance in one stack</h2></div><p>Grape is infrastructure for internet communities: verify members, enforce access, map reputation, and execute DAO decisions in one integrated stack.</p></div>
+        <div className="hub-products">
+          {grapeProducts.filter((product) => !product.isAuxiliary).map((product) => <article className="hub-product" key={product.name}>
+            <div className="hub-product-top"><Image src={product.logo} alt="" width={44} height={44} /><span className="hub-product-type">{product.programId ? "Solana program" : "Governance interface"}</span></div>
+            <h3><a href={product.href} target="_blank" rel="noreferrer">{product.name} </a></h3>
+            <p>{product.description}</p>
+            <details className="hub-details"><summary>Program & integration</summary><div>
+              {product.programId && <ProgramAddress address={product.programId} />}
+              {product.sdkHref && <a href={product.sdkHref} target="_blank" rel="noreferrer">SDK on npm</a>}
+              {product.requestBotFromDao && <a href={grapeLinks.discord} target="_blank" rel="noreferrer">Request Discord bot</a>}
+              <a href={product.href} target="_blank" rel="noreferrer">{product.ctaLabel}</a>
+            </div></details>
+          </article>)}
+          <article className="hub-product hub-build-card"><span className="hub-eyebrow">How It Connects</span><h3>Composable primitives for communities that need to scale</h3><p>These programs are core primitives, not isolated features. They create a common trust layer that other products, communities, and DAOs can compose without rebuilding identity, reputation, or access logic from scratch.</p><a className="hub-text-link" href={grapeLinks.docs} target="_blank" rel="noreferrer">Explore the docs</a></article>
+        </div>
+        <details className="hub-auxiliary hub-details"><summary>More building blocks · Distribution & bundled transfers</summary><div>{grapeProducts.filter((product) => product.isAuxiliary).map((product) => <div key={product.name}><h3><a href={product.href} target="_blank" rel="noreferrer">{product.name}</a></h3><p>{product.description}</p>{product.sdkHref && <a href={product.sdkHref} target="_blank" rel="noreferrer">SDK on npm</a>}</div>)}</div></details>
+        <details className="hub-details hub-network-details"><summary>Live Solana network signals</summary><div><LiveSignalsPanel /></div></details>
+      </section>
 
-      <Box mt={5}>
-        <Card
-          className="fx-enter fx-shell fx-glow"
-          sx={{
-            borderRadius: 2.5,
-            overflow: "hidden",
-            background:
-              "linear-gradient(135deg, rgba(30, 10, 49, 0.96), rgba(11, 18, 34, 0.96) 52%, rgba(8, 14, 22, 0.98))"
-          }}
-        >
-          <CardContent sx={{ p: { xs: 2.2, md: 3 } }}>
-            <Grid container spacing={2.5} alignItems="center">
-              <Grid item xs={12} md={7}>
-                <Stack spacing={1.4}>
-                  <Stack direction="row" spacing={1} alignItems="center" useFlexGap flexWrap="wrap">
-                    <Typography variant="overline" color="primary.light">
-                      Beta Preview
-                    </Typography>
-                    <Chip size="small" color="secondary" label="Multi-chain Wallet" />
-                  </Stack>
-                  <Typography variant="h2" sx={{ fontSize: { xs: "1.55rem", md: "2rem" } }}>
-                    Grape Wallet for Chromium and Android
-                  </Typography>
-                  <Typography color="text.secondary" sx={{ maxWidth: 680 }}>
-                    Grape Wallet is now in beta as a new extension and mobile
-                    experience with a broader multi-chain product direction.
-                  </Typography>
-                  <Typography color="text.secondary" sx={{ maxWidth: 680 }}>
-                    Built for people moving across ecosystems, Grape Wallet
-                    combines balances, transfers, swaps, bridging, and everyday
-                    wallet actions with the Grape product stack already powering
-                    identity, reputation, access, rewards, and governance.
-                  </Typography>
-                  <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                    <Chip variant="outlined" color="secondary" label="Chromium Extension" />
-                    <Chip variant="outlined" color="secondary" label="Android App" />
-                    <Chip variant="outlined" color="secondary" label="Multi-chain" />
-                  </Stack>
-                  <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
-                    <Button variant="contained" color="secondary" disabled>
-                      Beta
-                    </Button>
-                    <Button
-                      variant="outlined"
-                      color="secondary"
-                      href={grapeLinks.discord}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      Get Updates on Discord
-                    </Button>
-                  </Stack>
-                  <Grid container spacing={1.2}>
-                    <Grid item xs={12} sm={4}>
-                      <Card
-                        variant="outlined"
-                        sx={{
-                          height: "100%",
-                          borderRadius: 1.8,
-                          background:
-                            "linear-gradient(145deg, rgba(18, 32, 42, 0.82), rgba(12, 22, 30, 0.82))",
-                          borderColor: "divider"
-                        }}
-                      >
-                        <CardContent sx={{ p: 1.3, "&:last-child": { pb: 1.3 } }}>
-                          <Stack spacing={0.7}>
-                            <Typography variant="subtitle2">Bridged With Grape</Typography>
-                            <Typography variant="body2" color="text.secondary">
-                              The wallet will connect directly to Grape identity,
-                              reputation, access, claims, and governance tooling
-                              so users can move from holding assets to
-                              participating in communities and DAOs.
-                            </Typography>
-                          </Stack>
-                        </CardContent>
-                      </Card>
-                    </Grid>
-                    <Grid item xs={12} sm={4}>
-                      <Card
-                        variant="outlined"
-                        sx={{
-                          height: "100%",
-                          borderRadius: 1.8,
-                          background:
-                            "linear-gradient(145deg, rgba(18, 32, 42, 0.82), rgba(12, 22, 30, 0.82))",
-                          borderColor: "divider"
-                        }}
-                      >
-                        <CardContent sx={{ p: 1.3, "&:last-child": { pb: 1.3 } }}>
-                          <Stack spacing={0.7}>
-                            <Typography variant="subtitle2">What We&apos;re Adding</Typography>
-                            <Typography variant="body2" color="text.secondary">
-                              Wallet-native verification, gated access flows,
-                              reward and claim experiences, governance actions,
-                              and safer multi-chain operations informed by
-                              Grape&apos;s existing community tooling.
-                            </Typography>
-                          </Stack>
-                        </CardContent>
-                      </Card>
-                    </Grid>
-                    <Grid item xs={12} sm={4}>
-                      <Card
-                        variant="outlined"
-                        sx={{
-                          height: "100%",
-                          borderRadius: 1.8,
-                          background:
-                            "linear-gradient(145deg, rgba(18, 32, 42, 0.82), rgba(12, 22, 30, 0.82))",
-                          borderColor: "divider"
-                        }}
-                      >
-                        <CardContent sx={{ p: 1.3, "&:last-child": { pb: 1.3 } }}>
-                          <Stack spacing={0.7}>
-                            <Typography variant="subtitle2">What Makes It Unique</Typography>
-                            <Typography variant="body2" color="text.secondary">
-                              Most wallets stop at transactions. Grape Wallet is
-                              designed to carry trust context, community access,
-                              and governance participation with the wallet
-                              itself, not as an afterthought.
-                            </Typography>
-                          </Stack>
-                        </CardContent>
-                      </Card>
-                    </Grid>
-                  </Grid>
-                </Stack>
-              </Grid>
-              <Grid item xs={12} md={5}>
-                <Box
-                  sx={{
-                    display: "flex",
-                    justifyContent: "center",
-                    py: { xs: 1, md: 0 }
-                  }}
-                >
-                  <Stack
-                    direction="row"
-                    spacing={{ xs: 1, md: 1.4 }}
-                    alignItems="flex-start"
-                    sx={{ width: "100%", justifyContent: "center" }}
-                  >
-                    {walletPreviewShots.map((preview, index) => (
-                      <Box
-                        key={preview.alt}
-                        sx={{
-                          width: "100%",
-                          maxWidth: { xs: 198, md: 240 },
-                          p: 0.8,
-                          mt: index === 1 ? { xs: 2, md: 3 } : 0,
-                          borderRadius: 4,
-                          overflow: "hidden",
-                          background:
-                            "linear-gradient(160deg, rgba(255, 255, 255, 0.08), rgba(160, 96, 255, 0.08))",
-                          border: "1px solid",
-                          borderColor: "rgba(255, 255, 255, 0.08)",
-                          boxShadow: "0 30px 70px rgba(0, 0, 0, 0.4)"
-                        }}
-                      >
-                        <Image
-                          src={preview.src}
-                          alt={preview.alt}
-                          priority={false}
-                          style={{
-                            width: "100%",
-                            height: "auto",
-                            display: "block",
-                            borderRadius: 24
-                          }}
-                        />
-                      </Box>
-                    ))}
-                  </Stack>
-                </Box>
-              </Grid>
-            </Grid>
-          </CardContent>
-        </Card>
-      </Box>
+      <section className="hub-wallet hub-width">
+        <div className="hub-wallet-copy"><p className="hub-eyebrow">Beta Preview <span className="hub-beta">In beta</span></p><h2>Grape Wallet for Chromium and Android</h2><p>Grape Wallet is now in beta as a new extension and mobile experience with a broader multi-chain product direction.</p><a className="hub-button hub-button-light" href={grapeLinks.discord} target="_blank" rel="noreferrer">Get beta updates </a><span className="hub-platforms">Chromium extension / Android app</span></div>
+        <div className="hub-wallet-art">
+          <div className="hub-wallet-screen hub-wallet-screen-secondary"><Image src={walletUnlockPreview} alt="Grape Wallet beta unlock screen on Android" sizes="(max-width: 420px) 146px, (max-width: 1000px) 178px, 205px" /></div>
+          <div className="hub-wallet-screen"><Image src={walletPreview} alt="Grape Wallet beta home screen on Android" sizes="(max-width: 420px) 165px, (max-width: 1000px) 200px, 230px" /></div>
+        </div>
+      </section>
 
-      <Box mt={5}>
-        <Stack spacing={1}>
-          <Typography variant="overline" color="primary.light">
-            Products
-          </Typography>
-        </Stack>
-        <Grid container spacing={2} mt={0.5}>
-          {grapeProducts.map((product, index) => (
-            <Grid
-              key={product.name}
-              item
-              xs={12}
-              md={product.name === "Governance UI" ? 12 : 6}
-            >
-              <Card
-                className="fx-enter fx-card fx-shell"
-                sx={{
-                  height: "100%",
-                  borderRadius: 2.5,
-                  background: accentGradients[index % accentGradients.length],
-                  animationDelay: `${index * 90}ms`
-                }}
-              >
-                <CardContent sx={{ p: 2.5 }}>
-                  <Stack spacing={1.4}>
-                    <Stack direction="row" justifyContent="space-between" alignItems="center">
-                      <Stack direction="row" spacing={0.8} alignItems="center">
-                        <Chip
-                          size="small"
-                          variant="outlined"
-                          label={`0${index + 1}`}
-                          sx={{ fontFamily: "var(--font-mono), monospace" }}
-                        />
-                        {product.isAuxiliary ? (
-                          <Chip size="small" variant="outlined" color="default" label="Auxiliary" />
-                        ) : null}
-                      </Stack>
-                    </Stack>
-                    <Stack direction="row" spacing={1.2} alignItems="center">
-                      <Avatar
-                        variant="rounded"
-                        sx={{
-                          width: 44,
-                          height: 44,
-                          borderRadius: 1.5,
-                          bgcolor: "rgba(12, 19, 24, 0.9)",
-                          border: "1px solid",
-                          borderColor: "divider"
-                        }}
-                      >
-                        <Image
-                          src={product.logo}
-                          alt={`${product.name} logo`}
-                          width={44}
-                          height={44}
-                          style={{
-                            width: "100%",
-                            height: "100%",
-                            objectFit: "cover",
-                            filter: product.logoGrayscale ? "grayscale(1)" : "none"
-                          }}
-                        />
-                      </Avatar>
-                      <Typography variant="h3" sx={{ fontSize: "1.3rem" }}>
-                        {product.name}
-                      </Typography>
-                    </Stack>
-                    <Typography color="text.secondary">{product.description}</Typography>
-                    {product.programId ? (
-                      <Typography
-                        variant="caption"
-                        color="text.secondary"
-                        sx={{ wordBreak: "break-all", fontFamily: "var(--font-mono), monospace" }}
-                      >
-                        Program: {product.programId}
-                      </Typography>
-                    ) : null}
-                    {product.addressPending ? (
-                      <Typography variant="caption" color="text.secondary">
-                        Program address pending.
-                      </Typography>
-                    ) : null}
-                    <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                      {product.href && product.ctaLabel ? (
-                        <Button
-                          variant={product.isAuxiliary ? "outlined" : "contained"}
-                          color={product.isAuxiliary ? "secondary" : "primary"}
-                          href={product.href}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          {product.ctaLabel}
-                        </Button>
-                      ) : product.addressPending ? (
-                        <Button variant="outlined" color="inherit" disabled>
-                          Address Pending
-                        </Button>
-                      ) : null}
-                      {product.sdkHref ? (
-                        <Button
-                          variant="outlined"
-                          color="secondary"
-                          href={product.sdkHref}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          SDK / NPM
-                        </Button>
-                      ) : null}
-                      {product.requestBotFromDao ? (
-                        <Button
-                          variant="outlined"
-                          color="secondary"
-                          href={grapeLinks.discord}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          Request Discord Bot
-                        </Button>
-                      ) : null}
-                    </Stack>
-                    {product.requestBotFromDao ? (
-                      <Typography variant="caption" color="text.secondary">
-                        Bot invite links are private. Reach out to the Grape DAO for setup.
-                      </Typography>
-                    ) : null}
-                  </Stack>
-                </CardContent>
-              </Card>
-            </Grid>
-          ))}
-        </Grid>
-      </Box>
+      <section className="hub-section hub-width">
+        <div className="hub-section-heading"><div><p className="hub-eyebrow">Getting Started</p><h2>Launch Your Reputation Layer</h2></div><a className="hub-text-link" href="https://reputation.governance.so" target="_blank" rel="noreferrer">Create your space</a></div>
+        <div className="hub-steps">{[
+          ["01", "Create Your OG Reputation Space", "Create your Space, set branding, and publish your on-chain reputation hub for your community."],
+          ["02", "Establish Your Reputation Layer", "Reputation is your community’s trust infrastructure. Define how influence is earned, verified, and preserved — across manual awards, Discord automation, on-chain actions, and seasonal rules."],
+          ["03", "Set Up Your Discord Bot", "Deploy your Discord bot to automate awards, recognize participation, and connect your community activity directly to on-chain reputation."]
+        ].map(([number, title, description]) => <article key={number}><span className="hub-index">{number}</span><h3>{title}</h3><p>{description}</p></article>)}</div>
+        <details className="hub-details hub-bots"><summary>Explore the Discord bots <span>{grapeBots.length} integrations</span></summary><div>{grapeBots.map((bot) => <article key={bot.name}><h3>{bot.name}</h3><p>{bot.description}</p></article>)}<a className="hub-text-link" href={grapeLinks.discord} target="_blank" rel="noreferrer">Request bot access</a></div></details>
+      </section>
 
-      <Box mt={5}>
-        <Stack spacing={1}>
-          <Typography variant="overline" color="primary.light">
-            Discord Bots
-          </Typography>
-          <Typography variant="h2" sx={{ fontSize: { xs: "1.45rem", md: "1.95rem" } }}>
-            Automations That Run Inside The Community
-          </Typography>
-          <Typography color="text.secondary" sx={{ maxWidth: 860 }}>
-            Grape’s bot layer brings reputation, verification, access control, wallet
-            actions, and governance updates directly into Discord where contributors already coordinate.
-          </Typography>
-          <Typography variant="caption" color="text.secondary">
-            Bot invite links are private. Reach out to the Grape DAO for setup.
-          </Typography>
-        </Stack>
-        <Grid container spacing={2} mt={0.5}>
-          {grapeBots.map((bot, index) => (
-            <Grid item xs={12} md={6} lg={4} key={bot.name}>
-              <Card
-                className="fx-enter fx-card fx-shell"
-                sx={{
-                  height: "100%",
-                  borderRadius: 2.5,
-                  background:
-                    "linear-gradient(150deg, rgba(16, 30, 39, 0.95), rgba(9, 18, 24, 0.96))",
-                  border: "1px solid",
-                  borderColor: "divider",
-                  animationDelay: `${index * 80}ms`
-                }}
-              >
-                <CardContent sx={{ p: 2.1 }}>
-                  <Stack spacing={1.2}>
-                    <Stack direction="row" spacing={0.8} alignItems="center" useFlexGap flexWrap="wrap">
-                      <Chip
-                        size="small"
-                        variant="outlined"
-                        label={`0${index + 1}`}
-                        sx={{ fontFamily: "var(--font-mono), monospace" }}
-                      />
-                      <Chip size="small" variant="outlined" color="secondary" label={bot.role} />
-                    </Stack>
-                    <Typography variant="h3" sx={{ fontSize: "1.15rem" }}>
-                      {bot.name}
-                    </Typography>
-                    <Typography color="text.secondary">{bot.description}</Typography>
-                    <Button
-                      variant="outlined"
-                      color="secondary"
-                      href={grapeLinks.discord}
-                      target="_blank"
-                      rel="noreferrer"
-                      sx={{ width: "fit-content" }}
-                    >
-                      Request Bot Access
-                    </Button>
-                  </Stack>
-                </CardContent>
-              </Card>
-            </Grid>
-          ))}
-        </Grid>
-      </Box>
-
-      <Box mt={5}>
-        <Card
-          className="fx-enter fx-shell"
-          sx={{
-            borderRadius: 2.5,
-            background:
-              "linear-gradient(160deg, rgba(12, 22, 31, 0.94), rgba(8, 14, 20, 0.96))"
-          }}
-        >
-          <CardContent sx={{ p: { xs: 2.5, md: 3 } }}>
-            <Grid container spacing={2.3}>
-              <Grid item xs={12} lg={6}>
-                <Stack spacing={1.3}>
-                  <Typography variant="overline" color="primary.light">
-                    Why Grape
-                  </Typography>
-                  <Typography variant="h2" sx={{ fontSize: { xs: "1.45rem", md: "1.95rem" } }}>
-                    Decentralized Social Networking Infrastructure
-                  </Typography>
-                  <Typography color="text.secondary">
-                    Create, reward, and secure online communities by harnessing
-                    the speed and composability of Solana.
-                  </Typography>
-                  <Typography color="text.secondary">
-                    Grape is infrastructure for internet communities: verify
-                    members, enforce access, map reputation, and execute DAO
-                    decisions in one integrated stack.
-                  </Typography>
-                  <Typography color="text.secondary">
-                    These programs are core primitives, not isolated features.
-                    They create a common trust layer that other products,
-                    communities, and DAOs can compose without rebuilding identity,
-                    reputation, or access logic from scratch.
-                  </Typography>
-                  <Typography color="text.secondary">
-                    The strategic potential is network effects: more integrations
-                    strengthen shared attestations, shared reputation context, and
-                    reusable governance pathways across ecosystems on Solana.
-                  </Typography>
-                  <Card
-                    variant="outlined"
-                    sx={{
-                      borderRadius: 1.8,
-                      background:
-                        "linear-gradient(145deg, rgba(16, 30, 39, 0.92), rgba(11, 22, 29, 0.9))",
-                      borderColor: "divider"
-                    }}
-                  >
-                    <CardContent sx={{ p: 1.3, "&:last-child": { pb: 1.3 } }}>
-                      <Stack spacing={0.7}>
-                        <Typography variant="subtitle2" color="primary.light">
-                          The Grape DAO
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          Verified DAO members use Grape tools in real workflows,
-                          share operational feedback, participate in governance,
-                          and earn rewards for meaningful contributions. That
-                          continuous loop keeps the products and tooling aligned with real
-                          community needs while strengthening participation and
-                          trust over time.
-                        </Typography>
-                      </Stack>
-                    </CardContent>
-                  </Card>
-                  <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
-                    <Chip label="Solana Mainnet" variant="outlined" color="secondary" />
-                    <Chip label="DAO-native Primitives" variant="outlined" color="secondary" />
-                    <Chip label="Composable by Design" variant="outlined" color="secondary" />
-                  </Stack>
-                </Stack>
-              </Grid>
-              <Grid item xs={12} lg={6}>
-                <Stack spacing={1.2}>
-                  <Typography variant="overline" color="primary.light">
-                    How It Connects
-                  </Typography>
-                  {grapeFlow.map((step, index) => (
-                    <Card
-                      key={step.title}
-                      sx={{
-                        borderRadius: 1.8,
-                        background:
-                          "linear-gradient(145deg, rgba(18, 30, 40, 0.92), rgba(12, 21, 28, 0.92))",
-                        border: "1px solid",
-                        borderColor: "divider"
-                      }}
-                    >
-                      <CardContent sx={{ p: 1.35, "&:last-child": { pb: 1.35 } }}>
-                        <Stack direction="row" spacing={1.2} alignItems="flex-start">
-                          <Chip
-                            size="small"
-                            variant="outlined"
-                            label={`0${index + 1}`}
-                            sx={{ fontFamily: "var(--font-mono), monospace" }}
-                          />
-                          <Box>
-                            <Typography variant="subtitle2" sx={{ lineHeight: 1.2 }}>
-                              {step.title}
-                            </Typography>
-                            <Typography variant="body2" color="text.secondary">
-                              {step.detail}
-                            </Typography>
-                            <Chip
-                              size="small"
-                              variant="outlined"
-                              label={step.programId}
-                              sx={{
-                                mt: 0.8,
-                                fontFamily: "var(--font-mono), monospace",
-                                "& .MuiChip-label": {
-                                  display: "block",
-                                  whiteSpace: "normal",
-                                  wordBreak: "break-all"
-                                }
-                              }}
-                            />
-                            <Button
-                              size="small"
-                              variant="text"
-                              color="secondary"
-                              href={`https://explorer.solana.com/address/${step.programId}?cluster=mainnet`}
-                              target="_blank"
-                              rel="noreferrer"
-                              sx={{ mt: 0.4, ml: 1.1, px: 0, minWidth: 0 }}
-                            >
-                              View on Explorer
-                            </Button>
-                          </Box>
-                        </Stack>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </Stack>
-              </Grid>
-            </Grid>
-          </CardContent>
-        </Card>
-      </Box>
-    </Container>
+      <section className="hub-community hub-width"><p className="hub-eyebrow">Grape DAO</p><h2>Decentralized Social Networking Infrastructure</h2><p>Create, reward, and secure online communities by harnessing the speed and composability of Solana.</p><a className="hub-button" href={grapeLinks.discord} target="_blank" rel="noreferrer">Join Grape DAO </a></section>
+      <footer className="hub-footer hub-width"><Link href="/" className="hub-brand"><Image src={grapeAvatar} alt="" width={36} height={36} /><span className="hub-wordmark">Grape Hub</span><span className="hub-brand-label">grapedao.org</span></Link><nav aria-label="Footer navigation"><a href={grapeLinks.x} target="_blank" rel="noreferrer">X</a><a href={grapeLinks.github} target="_blank" rel="noreferrer">GitHub</a><Link href="/faq">FAQ</Link><Link href="/claims">Claims</Link></nav><span>Built on Solana</span></footer>
+    </main>
   );
 }
